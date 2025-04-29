@@ -27,13 +27,13 @@ def generate_frames():
         # Get simulated temperature and humidity
         temperature, humidity = get_simulated_readings()
         
-        # Add text overlay with degree symbol
-        text = f"Temp: {temperature:.1f}\u00B0C  Hum: {humidity:.1f}%"
+        # Add text overlay - using 'C' instead of degree symbol
+        text = f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%"
         
         # Get text size
         font_scale = 0.5
         thickness = 1
-        font = cv2.FONT_HERSHEY_PLAIN  # Using PLAIN font which might handle special characters better
+        font = cv2.FONT_HERSHEY_SIMPLEX
         (text_width, text_height), _ = cv2.getTextSize(text, font, font_scale, thickness)
         
         # Add semi-transparent background
