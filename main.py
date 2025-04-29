@@ -4,7 +4,7 @@ import cv2
 app = Flask(__name__)
 
 # Camera setup (UVC camera, usually index 0; adjust if needed)
-camera = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # CAP_DSHOW for Windows
+camera = cv2.VideoCapture(0)  # CAP_DSHOW for Windows
 camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)   # Resolution: 640x480
 camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 camera.set(cv2.CAP_PROP_FPS, 30)           # Framerate: 30 fps
