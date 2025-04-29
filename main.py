@@ -2,6 +2,7 @@ from flask import Flask, Response
 import cv2
 import random
 import time
+import numpy as np
 
 app = Flask(__name__)
 
@@ -28,7 +29,21 @@ def generate_frames():
         
         # Add text overlay
         text = f"Temp: {temperature:.1f}°C  Hum: {humidity:.1f}%"
-        cv2.putText(frame, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        
+        # Get text size
+        font_scale = 0.5
+        thickness = 1
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        (text_width, text_height), _ = cv2.getTextSize(text, font, font_scale, thickness)
+        
+        # Add semi-transparent background
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (5, 5), (5 + text_width + 10, 5 + text_height + 10), (0, 0, 0), -1)
+        alpha = 0.5  # Transparency factor
+        cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
+        
+        # Add text
+        cv2.putText(frame, text, (10, 20), font, font_scale, (255, 255, 255), thickness)
 
         # Encode frame as JPEG for MJPEG streaming
         ret, buffer = cv2.imencode('.jpg', frame)
