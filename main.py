@@ -221,7 +221,7 @@ def handle_config():
 
 @app.route('/')
 def index():
-    """Serve a simple HTML page with both camera feeds and configuration interface."""
+    """Serve a simple HTML page with camera feed and configuration interface."""
     return """
     <html>
         <head>
@@ -229,12 +229,12 @@ def index():
             <style>
                 body { margin: 0; padding: 20px; background: #333; color: white; }
                 .container { display: flex; gap: 20px; }
-                .camera-feed { flex: 1; }
+                .camera-feed { flex: 2; }
+                .config-panel { flex: 1; background: #444; padding: 20px; border-radius: 5px; }
                 img { width: 100%; height: auto; }
                 .controls { margin: 20px 0; }
                 button { padding: 10px 20px; margin: 0 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; }
                 button:hover { background: #45a049; }
-                .config-panel { background: #444; padding: 20px; margin: 20px 0; border-radius: 5px; }
                 .config-section { margin-bottom: 20px; }
                 .config-section h4 { margin: 10px 0; color: #4CAF50; }
                 .config-input { margin: 5px 0; }
@@ -253,80 +253,76 @@ def index():
             </div>
             <div class="container">
                 <div class="camera-feed">
-                    <h2>Camera 1</h2>
+                    <h2>Camera Feed</h2>
                     <img src="/camera1" id="camera1" />
                 </div>
-                <div class="camera-feed">
-                    <h2>Camera 2</h2>
-                    <img src="/camera2" id="camera2" />
-                </div>
-            </div>
-            <div class="config-panel">
-                <h3>Configuration Settings</h3>
-                <div id="status-message" class="status-message" style="display: none;"></div>
-                
-                <div class="config-section">
-                    <h4>General Settings</h4>
-                    <div class="config-input">
-                        <label>Movement Threshold:</label>
-                        <input type="number" id="movement-threshold" value="1000">
+                <div class="config-panel">
+                    <h3>Configuration Settings</h3>
+                    <div id="status-message" class="status-message" style="display: none;"></div>
+                    
+                    <div class="config-section">
+                        <h4>General Settings</h4>
+                        <div class="config-input">
+                            <label>Movement Threshold:</label>
+                            <input type="number" id="movement-threshold" value="1000">
+                        </div>
+                        <div class="config-input">
+                            <label>Sleeping Threshold:</label>
+                            <input type="number" id="sleeping-threshold" value="5">
+                        </div>
                     </div>
-                    <div class="config-input">
-                        <label>Sleeping Threshold:</label>
-                        <input type="number" id="sleeping-threshold" value="5">
-                    </div>
-                </div>
 
-                <div class="config-section">
-                    <h4>Wheel Area</h4>
-                    <div class="area-box">
-                        <div class="config-input">
-                            <label>X1:</label>
-                            <input type="number" id="wheel-x1" value="200">
-                            <label>Y1:</label>
-                            <input type="number" id="wheel-y1" value="200">
-                        </div>
-                        <div class="config-input">
-                            <label>X2:</label>
-                            <input type="number" id="wheel-x2" value="440">
-                            <label>Y2:</label>
-                            <input type="number" id="wheel-y2" value="280">
-                        </div>
-                    </div>
-                </div>
-
-                <div class="config-section">
-                    <h4>Food Area</h4>
-                    <div class="area-box">
-                        <div class="config-input">
-                            <label>X1:</label>
-                            <input type="number" id="food-x1" value="50">
-                            <label>Y1:</label>
-                            <input type="number" id="food-y1" value="300">
-                        </div>
-                        <div class="config-input">
-                            <label>X2:</label>
-                            <input type="number" id="food-x2" value="150">
-                            <label>Y2:</label>
-                            <input type="number" id="food-y2" value="400">
+                    <div class="config-section">
+                        <h4>Wheel Area</h4>
+                        <div class="area-box">
+                            <div class="config-input">
+                                <label>X1:</label>
+                                <input type="number" id="wheel-x1" value="200">
+                                <label>Y1:</label>
+                                <input type="number" id="wheel-y1" value="200">
+                            </div>
+                            <div class="config-input">
+                                <label>X2:</label>
+                                <input type="number" id="wheel-x2" value="440">
+                                <label>Y2:</label>
+                                <input type="number" id="wheel-y2" value="280">
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <div class="config-section">
-                    <h4>Water Area</h4>
-                    <div class="area-box">
-                        <div class="config-input">
-                            <label>X1:</label>
-                            <input type="number" id="water-x1" value="450">
-                            <label>Y1:</label>
-                            <input type="number" id="water-y1" value="300">
+                    <div class="config-section">
+                        <h4>Food Area</h4>
+                        <div class="area-box">
+                            <div class="config-input">
+                                <label>X1:</label>
+                                <input type="number" id="food-x1" value="50">
+                                <label>Y1:</label>
+                                <input type="number" id="food-y1" value="300">
+                            </div>
+                            <div class="config-input">
+                                <label>X2:</label>
+                                <input type="number" id="food-x2" value="150">
+                                <label>Y2:</label>
+                                <input type="number" id="food-y2" value="400">
+                            </div>
                         </div>
-                        <div class="config-input">
-                            <label>X2:</label>
-                            <input type="number" id="water-x2" value="550">
-                            <label>Y2:</label>
-                            <input type="number" id="water-y2" value="400">
+                    </div>
+
+                    <div class="config-section">
+                        <h4>Water Area</h4>
+                        <div class="area-box">
+                            <div class="config-input">
+                                <label>X1:</label>
+                                <input type="number" id="water-x1" value="450">
+                                <label>Y1:</label>
+                                <input type="number" id="water-y1" value="300">
+                            </div>
+                            <div class="config-input">
+                                <label>X2:</label>
+                                <input type="number" id="water-x2" value="550">
+                                <label>Y2:</label>
+                                <input type="number" id="water-y2" value="400">
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -347,7 +343,6 @@ def index():
                 function toggleConfig() {
                     configMode = !configMode;
                     document.getElementById('camera1').src = '/camera1?config=' + configMode;
-                    document.getElementById('camera2').src = '/camera2?config=' + configMode;
                 }
                 
                 function saveConfig() {
