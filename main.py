@@ -232,8 +232,18 @@ def index():
                 .camera-feed { flex: 1; }
                 img { width: 100%; height: auto; }
                 .controls { margin: 20px 0; }
-                button { padding: 10px 20px; margin: 0 10px; }
+                button { padding: 10px 20px; margin: 0 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; }
+                button:hover { background: #45a049; }
                 .config-panel { background: #444; padding: 20px; margin: 20px 0; border-radius: 5px; }
+                .config-section { margin-bottom: 20px; }
+                .config-section h4 { margin: 10px 0; color: #4CAF50; }
+                .config-input { margin: 5px 0; }
+                .config-input label { display: inline-block; width: 150px; }
+                .config-input input { width: 80px; padding: 5px; margin-right: 10px; }
+                .area-box { border: 1px solid #666; padding: 10px; margin: 10px 0; background: #555; }
+                .status-message { margin: 10px 0; padding: 10px; border-radius: 4px; }
+                .success { background: #4CAF50; }
+                .error { background: #f44336; }
             </style>
         </head>
         <body>
@@ -252,11 +262,87 @@ def index():
                 </div>
             </div>
             <div class="config-panel">
-                <h3>Configuration</h3>
-                <div id="config-values"></div>
+                <h3>Configuration Settings</h3>
+                <div id="status-message" class="status-message" style="display: none;"></div>
+                
+                <div class="config-section">
+                    <h4>General Settings</h4>
+                    <div class="config-input">
+                        <label>Movement Threshold:</label>
+                        <input type="number" id="movement-threshold" value="1000">
+                    </div>
+                    <div class="config-input">
+                        <label>Sleeping Threshold:</label>
+                        <input type="number" id="sleeping-threshold" value="5">
+                    </div>
+                </div>
+
+                <div class="config-section">
+                    <h4>Wheel Area</h4>
+                    <div class="area-box">
+                        <div class="config-input">
+                            <label>X1:</label>
+                            <input type="number" id="wheel-x1" value="200">
+                            <label>Y1:</label>
+                            <input type="number" id="wheel-y1" value="200">
+                        </div>
+                        <div class="config-input">
+                            <label>X2:</label>
+                            <input type="number" id="wheel-x2" value="440">
+                            <label>Y2:</label>
+                            <input type="number" id="wheel-y2" value="280">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="config-section">
+                    <h4>Food Area</h4>
+                    <div class="area-box">
+                        <div class="config-input">
+                            <label>X1:</label>
+                            <input type="number" id="food-x1" value="50">
+                            <label>Y1:</label>
+                            <input type="number" id="food-y1" value="300">
+                        </div>
+                        <div class="config-input">
+                            <label>X2:</label>
+                            <input type="number" id="food-x2" value="150">
+                            <label>Y2:</label>
+                            <input type="number" id="food-y2" value="400">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="config-section">
+                    <h4>Water Area</h4>
+                    <div class="area-box">
+                        <div class="config-input">
+                            <label>X1:</label>
+                            <input type="number" id="water-x1" value="450">
+                            <label>Y1:</label>
+                            <input type="number" id="water-y1" value="300">
+                        </div>
+                        <div class="config-input">
+                            <label>X2:</label>
+                            <input type="number" id="water-x2" value="550">
+                            <label>Y2:</label>
+                            <input type="number" id="water-y2" value="400">
+                        </div>
+                    </div>
+                </div>
             </div>
             <script>
                 let configMode = false;
+                
+                function showStatus(message, isError = false) {
+                    const statusDiv = document.getElementById('status-message');
+                    statusDiv.textContent = message;
+                    statusDiv.className = `status-message ${isError ? 'error' : 'success'}`;
+                    statusDiv.style.display = 'block';
+                    setTimeout(() => {
+                        statusDiv.style.display = 'none';
+                    }, 3000);
+                }
                 
                 function toggleConfig() {
                     configMode = !configMode;
@@ -265,12 +351,42 @@ def index():
                 }
                 
                 function saveConfig() {
+                    const config = {
+                        MOVEMENT_THRESHOLD: parseInt(document.getElementById('movement-threshold').value),
+                        SLEEPING_THRESHOLD: parseInt(document.getElementById('sleeping-threshold').value),
+                        WHEEL_AREA: {
+                            x1: parseInt(document.getElementById('wheel-x1').value),
+                            y1: parseInt(document.getElementById('wheel-y1').value),
+                            x2: parseInt(document.getElementById('wheel-x2').value),
+                            y2: parseInt(document.getElementById('wheel-y2').value)
+                        },
+                        FOOD_AREA: {
+                            x1: parseInt(document.getElementById('food-x1').value),
+                            y1: parseInt(document.getElementById('food-y1').value),
+                            x2: parseInt(document.getElementById('food-x2').value),
+                            y2: parseInt(document.getElementById('food-y2').value)
+                        },
+                        WATER_AREA: {
+                            x1: parseInt(document.getElementById('water-x1').value),
+                            y1: parseInt(document.getElementById('water-y1').value),
+                            x2: parseInt(document.getElementById('water-x2').value),
+                            y2: parseInt(document.getElementById('water-y2').value)
+                        }
+                    };
+                    
                     fetch('/config', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                         },
-                        body: JSON.stringify(window.currentConfig)
+                        body: JSON.stringify(config)
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        showStatus('Configuration saved successfully!');
+                    })
+                    .catch(error => {
+                        showStatus('Error saving configuration: ' + error, true);
                     });
                 }
                 
@@ -278,14 +394,28 @@ def index():
                 fetch('/config')
                     .then(response => response.json())
                     .then(config => {
-                        window.currentConfig = config;
-                        updateConfigDisplay();
+                        // Set general settings
+                        document.getElementById('movement-threshold').value = config.MOVEMENT_THRESHOLD;
+                        document.getElementById('sleeping-threshold').value = config.SLEEPING_THRESHOLD;
+                        
+                        // Set wheel area
+                        document.getElementById('wheel-x1').value = config.WHEEL_AREA.x1;
+                        document.getElementById('wheel-y1').value = config.WHEEL_AREA.y1;
+                        document.getElementById('wheel-x2').value = config.WHEEL_AREA.x2;
+                        document.getElementById('wheel-y2').value = config.WHEEL_AREA.y2;
+                        
+                        // Set food area
+                        document.getElementById('food-x1').value = config.FOOD_AREA.x1;
+                        document.getElementById('food-y1').value = config.FOOD_AREA.y1;
+                        document.getElementById('food-x2').value = config.FOOD_AREA.x2;
+                        document.getElementById('food-y2').value = config.FOOD_AREA.y2;
+                        
+                        // Set water area
+                        document.getElementById('water-x1').value = config.WATER_AREA.x1;
+                        document.getElementById('water-y1').value = config.WATER_AREA.y1;
+                        document.getElementById('water-x2').value = config.WATER_AREA.x2;
+                        document.getElementById('water-y2').value = config.WATER_AREA.y2;
                     });
-                
-                function updateConfigDisplay() {
-                    const configDiv = document.getElementById('config-values');
-                    configDiv.innerHTML = JSON.stringify(window.currentConfig, null, 2);
-                }
             </script>
         </body>
     </html>
