@@ -3,6 +3,7 @@ import cv2
 import random
 import time
 import numpy as np
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -27,23 +28,29 @@ def generate_frames():
         # Get simulated temperature and humidity
         temperature, humidity = get_simulated_readings()
         
+        # Get current timestamp
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
         # Add text overlay - using 'C' instead of degree symbol
-        text = f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%"
+        text1 = f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%"
+        text2 = f"Time: {current_time}"
         
         # Get text size
         font_scale = 0.5
         thickness = 1
         font = cv2.FONT_HERSHEY_SIMPLEX
-        (text_width, text_height), _ = cv2.getTextSize(text, font, font_scale, thickness)
+        (text1_width, text1_height), _ = cv2.getTextSize(text1, font, font_scale, thickness)
+        (text2_width, text2_height), _ = cv2.getTextSize(text2, font, font_scale, thickness)
         
-        # Add semi-transparent background
+        # Add semi-transparent background for both lines
         overlay = frame.copy()
-        cv2.rectangle(overlay, (5, 5), (5 + text_width + 10, 5 + text_height + 10), (0, 0, 0), -1)
+        cv2.rectangle(overlay, (5, 5), (5 + max(text1_width, text2_width) + 10, 5 + text1_height + text2_height + 20), (0, 0, 0), -1)
         alpha = 0.5  # Transparency factor
         cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
         
         # Add text
-        cv2.putText(frame, text, (10, 20), font, font_scale, (255, 255, 255), thickness)
+        cv2.putText(frame, text1, (10, 20), font, font_scale, (255, 255, 255), thickness)
+        cv2.putText(frame, text2, (10, 40), font, font_scale, (255, 255, 255), thickness)
 
         # Encode frame as JPEG for MJPEG streaming
         ret, buffer = cv2.imencode('.jpg', frame)
