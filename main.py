@@ -57,15 +57,28 @@ def setup_camera(camera_index):
     camera.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
     camera.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
     camera.set(cv2.CAP_PROP_FPS, FPS)
+    # Enable auto exposure for better night vision
+    camera.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)
+    camera.set(cv2.CAP_PROP_EXPOSURE, -7)  # Lower exposure for night vision
     return camera
 
 # Initialize both cameras
 camera1 = setup_camera(CAMERA_INDEX_1)
 camera2 = setup_camera(CAMERA_INDEX_2)
 
-# Initialize background subtractors
-bg_subtractor1 = cv2.createBackgroundSubtractorMOG2(history=500, detectShadows=False)
-bg_subtractor2 = cv2.createBackgroundSubtractorMOG2(history=500, detectShadows=False)
+# Initialize background subtractors with adjusted parameters for night vision
+bg_subtractor1 = cv2.createBackgroundSubtractorMOG2(
+    history=500,
+    detectShadows=False,
+    varThreshold=25,  # Increased threshold to be less sensitive
+    varThresholdGen=25
+)
+bg_subtractor2 = cv2.createBackgroundSubtractorMOG2(
+    history=500,
+    detectShadows=False,
+    varThreshold=25,
+    varThresholdGen=25
+)
 
 def get_simulated_readings():
     """Generate simulated temperature and humidity readings."""
@@ -78,8 +91,16 @@ def detect_hamster_activity(frame, bg_subtractor, prev_activity, no_movement_fra
     if not config['ACTIVITY_DETECTION_ENABLED']:
         return "Activity detection disabled", no_movement_frames
         
+    # Apply noise reduction for night vision
+    frame = cv2.GaussianBlur(frame, (5, 5), 0)
+    
     # Apply background subtraction
     fg_mask = bg_subtractor.apply(frame)
+    
+    # Apply morphological operations to reduce noise
+    kernel = np.ones((3,3), np.uint8)
+    fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, kernel)
+    fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, kernel)
     
     # Apply threshold to get binary image
     _, thresh = cv2.threshold(fg_mask, 127, 255, cv2.THRESH_BINARY)
