@@ -65,15 +65,15 @@ def generate_frames():
         cv2.rectangle(
             overlay,
             (TEXT_PADDING, TEXT_PADDING),
-            (TEXT_PADDING + max(text1_width, text2_width) + TEXT_PADDING, TEXT_PADDING + text1_height + text2_height + TEXT_PADDING),
+            (TEXT_PADDING + max(text1_width, text2_width) + TEXT_PADDING * 2, TEXT_PADDING + text1_height + text2_height + TEXT_PADDING * 3),
             BACKGROUND_COLOR,
             -1
         )
         cv2.addWeighted(overlay, BACKGROUND_ALPHA, frame, 1 - BACKGROUND_ALPHA, 0, frame)
         
         # Add text
-        cv2.putText(frame, text1, (TEXT_PADDING + 5, TEXT_PADDING + 15), FONT, FONT_SCALE, TEXT_COLOR, FONT_THICKNESS)
-        cv2.putText(frame, text2, (TEXT_PADDING + 5, TEXT_PADDING + 35), FONT, FONT_SCALE, TEXT_COLOR, FONT_THICKNESS)
+        cv2.putText(frame, text1, (TEXT_PADDING + 5, TEXT_PADDING + text1_height + 5), FONT, FONT_SCALE, TEXT_COLOR, FONT_THICKNESS)
+        cv2.putText(frame, text2, (TEXT_PADDING + 5, TEXT_PADDING + text1_height + text2_height + TEXT_PADDING * 2), FONT, FONT_SCALE, TEXT_COLOR, FONT_THICKNESS)
 
         # Encode frame as JPEG for MJPEG streaming
         ret, buffer = cv2.imencode('.jpg', frame)
