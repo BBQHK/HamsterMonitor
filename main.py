@@ -10,7 +10,7 @@ app = Flask(__name__)
 camera = cv2.VideoCapture(0)  # CAP_DSHOW for Windows
 camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)   # Resolution: 640x480
 camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-camera.set(cv2.CAP_PROP_FPS, 30)           # Framerate: 30 fps
+camera.set(cv2.CAP_PROP_FPS, 15)           # Framerate: 15 fps
 
 def get_simulated_readings():
     # Simulate temperature between 20-30°C and humidity between 40-60%
