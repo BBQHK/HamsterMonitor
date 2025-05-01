@@ -28,7 +28,6 @@ CONFIG_FILE = 'activity_areas.json'
 DEFAULT_CONFIG = {
     'MOVEMENT_THRESHOLD': 1000,
     'SLEEPING_THRESHOLD': 5,
-    'ACTIVITY_DETECTION_ENABLED': True,
     'WHEEL_AREA': {'x1': 200, 'y1': 200, 'x2': 440, 'y2': 280},
     'FOOD_AREA': {'x1': 50, 'y1': 300, 'x2': 150, 'y2': 400},
     'WATER_AREA': {'x1': 450, 'y1': 300, 'x2': 550, 'y2': 400}
@@ -75,9 +74,6 @@ def get_simulated_readings():
 
 def detect_hamster_activity(frame, bg_subtractor, prev_activity, no_movement_frames):
     """Detect hamster activity based on movement patterns."""
-    if not config['ACTIVITY_DETECTION_ENABLED']:
-        return "Activity detection disabled", no_movement_frames
-        
     # Apply background subtraction
     fg_mask = bg_subtractor.apply(frame)
     
@@ -254,7 +250,6 @@ def index():
             <div class="controls">
                 <button onclick="toggleConfig()">Toggle Configuration Mode</button>
                 <button onclick="saveConfig()">Save Configuration</button>
-                <button onclick="toggleActivityDetection()" id="activity-detection-btn">Disable Activity Detection</button>
             </div>
             <div class="container">
                 <div class="camera-feed">
@@ -334,7 +329,6 @@ def index():
             </div>
             <script>
                 let configMode = false;
-                let activityDetectionEnabled = true;
                 
                 function showStatus(message, isError = false) {
                     const statusDiv = document.getElementById('status-message');
@@ -351,25 +345,10 @@ def index():
                     document.getElementById('camera1').src = '/camera1?config=' + configMode;
                 }
                 
-                function toggleActivityDetection() {
-                    activityDetectionEnabled = !activityDetectionEnabled;
-                    const button = document.getElementById('activity-detection-btn');
-                    button.textContent = activityDetectionEnabled ? 'Disable Activity Detection' : 'Enable Activity Detection';
-                    
-                    // Update the configuration
+                function saveConfig() {
                     const config = {
-                        ...getCurrentConfig(),
-                        ACTIVITY_DETECTION_ENABLED: activityDetectionEnabled
-                    };
-                    
-                    saveConfigToServer(config);
-                }
-                
-                function getCurrentConfig() {
-                    return {
                         MOVEMENT_THRESHOLD: parseInt(document.getElementById('movement-threshold').value),
                         SLEEPING_THRESHOLD: parseInt(document.getElementById('sleeping-threshold').value),
-                        ACTIVITY_DETECTION_ENABLED: activityDetectionEnabled,
                         WHEEL_AREA: {
                             x1: parseInt(document.getElementById('wheel-x1').value),
                             y1: parseInt(document.getElementById('wheel-y1').value),
@@ -389,9 +368,7 @@ def index():
                             y2: parseInt(document.getElementById('water-y2').value)
                         }
                     };
-                }
-                
-                function saveConfigToServer(config) {
+                    
                     fetch('/config', {
                         method: 'POST',
                         headers: {
@@ -408,10 +385,6 @@ def index():
                     });
                 }
                 
-                function saveConfig() {
-                    saveConfigToServer(getCurrentConfig());
-                }
-                
                 // Load initial configuration
                 fetch('/config')
                     .then(response => response.json())
@@ -419,9 +392,6 @@ def index():
                         // Set general settings
                         document.getElementById('movement-threshold').value = config.MOVEMENT_THRESHOLD;
                         document.getElementById('sleeping-threshold').value = config.SLEEPING_THRESHOLD;
-                        activityDetectionEnabled = config.ACTIVITY_DETECTION_ENABLED;
-                        document.getElementById('activity-detection-btn').textContent = 
-                            activityDetectionEnabled ? 'Disable Activity Detection' : 'Enable Activity Detection';
                         
                         // Set wheel area
                         document.getElementById('wheel-x1').value = config.WHEEL_AREA.x1;
