@@ -68,8 +68,8 @@ bg_subtractor2 = cv2.createBackgroundSubtractorMOG2(history=500, detectShadows=F
 
 def get_simulated_readings():
     """Generate simulated temperature and humidity readings."""
-    temperature = random.uniform(20.0, 30.0)
-    humidity = random.uniform(40.0, 60.0)
+    temperature = 22.5
+    humidity = 40.2
     return temperature, humidity
 
 def detect_hamster_activity(frame, bg_subtractor, prev_activity, no_movement_frames):
