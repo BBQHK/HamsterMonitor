@@ -1,9 +1,11 @@
-from flask import Flask, Response
+from flask import Flask, Response, request, jsonify
 import cv2
 import random
 import time
 import numpy as np
 from datetime import datetime
+import json
+import os
 
 # Constants
 CAMERA_INDEX_1 = 0  # First camera
@@ -19,12 +21,31 @@ TEXT_COLOR = (255, 255, 255)  # White
 BACKGROUND_COLOR = (0, 0, 0)  # Black
 TEXT_PADDING = 5
 
-# Activity detection constants
-MOVEMENT_THRESHOLD = 1000  # Minimum pixels that need to change to consider movement
-WHEEL_DETECTION_AREA = (200, 200, 440, 280)  # (x1, y1, x2, y2) - area where the wheel is
-FOOD_AREA = (50, 300, 150, 400)  # Area where food is placed
-WATER_AREA = (450, 300, 550, 400)  # Area where water is placed
-SLEEPING_THRESHOLD = 5  # Frames with minimal movement to consider sleeping
+# Configuration file path
+CONFIG_FILE = 'activity_areas.json'
+
+# Default activity detection constants
+DEFAULT_CONFIG = {
+    'MOVEMENT_THRESHOLD': 1000,
+    'SLEEPING_THRESHOLD': 5,
+    'WHEEL_AREA': {'x1': 200, 'y1': 200, 'x2': 440, 'y2': 280},
+    'FOOD_AREA': {'x1': 50, 'y1': 300, 'x2': 150, 'y2': 400},
+    'WATER_AREA': {'x1': 450, 'y1': 300, 'x2': 550, 'y2': 400}
+}
+
+# Load or create configuration
+def load_config():
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, 'r') as f:
+            return json.load(f)
+    return DEFAULT_CONFIG
+
+def save_config(config):
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump(config, f, indent=4)
+
+# Initialize configuration
+config = load_config()
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -63,33 +84,36 @@ def detect_hamster_activity(frame, bg_subtractor, prev_activity, no_movement_fra
     movement = cv2.countNonZero(thresh)
     
     # Check if hamster is in wheel area
-    wheel_roi = thresh[WHEEL_DETECTION_AREA[1]:WHEEL_DETECTION_AREA[3], WHEEL_DETECTION_AREA[0]:WHEEL_DETECTION_AREA[2]]
+    wheel_area = config['WHEEL_AREA']
+    wheel_roi = thresh[wheel_area['y1']:wheel_area['y2'], wheel_area['x1']:wheel_area['x2']]
     wheel_movement = cv2.countNonZero(wheel_roi)
     
     # Check if hamster is in food area
-    food_roi = thresh[FOOD_AREA[1]:FOOD_AREA[3], FOOD_AREA[0]:FOOD_AREA[2]]
+    food_area = config['FOOD_AREA']
+    food_roi = thresh[food_area['y1']:food_area['y2'], food_area['x1']:food_area['x2']]
     food_movement = cv2.countNonZero(food_roi)
     
     # Check if hamster is in water area
-    water_roi = thresh[WATER_AREA[1]:WATER_AREA[3], WATER_AREA[0]:WATER_AREA[2]]
+    water_area = config['WATER_AREA']
+    water_roi = thresh[water_area['y1']:water_area['y2'], water_area['x1']:water_area['x2']]
     water_movement = cv2.countNonZero(water_roi)
     
     # Update no movement frames counter
-    if movement < MOVEMENT_THRESHOLD:
+    if movement < config['MOVEMENT_THRESHOLD']:
         no_movement_frames += 1
     else:
         no_movement_frames = 0
     
     # Determine activity based on movement patterns
-    if no_movement_frames >= SLEEPING_THRESHOLD:
+    if no_movement_frames >= config['SLEEPING_THRESHOLD']:
         return "Sleeping", no_movement_frames
-    elif wheel_movement > MOVEMENT_THRESHOLD * 0.5:
+    elif wheel_movement > config['MOVEMENT_THRESHOLD'] * 0.5:
         return "Running on wheel", no_movement_frames
-    elif food_movement > MOVEMENT_THRESHOLD * 0.3:
+    elif food_movement > config['MOVEMENT_THRESHOLD'] * 0.3:
         return "Eating", no_movement_frames
-    elif water_movement > MOVEMENT_THRESHOLD * 0.3:
+    elif water_movement > config['MOVEMENT_THRESHOLD'] * 0.3:
         return "Drinking water", no_movement_frames
-    elif movement > MOVEMENT_THRESHOLD:
+    elif movement > config['MOVEMENT_THRESHOLD']:
         return "Exploring", no_movement_frames
     else:
         return prev_activity, no_movement_frames
@@ -121,7 +145,24 @@ def add_text_overlay(frame, text1, text2, text3):
     cv2.putText(frame, text2, (TEXT_PADDING + 5, TEXT_PADDING + text1_height + text2_height + TEXT_PADDING * 2), FONT, FONT_SCALE, TEXT_COLOR, FONT_THICKNESS)
     cv2.putText(frame, text3, (TEXT_PADDING + 5, TEXT_PADDING + text1_height + text2_height + text3_height + TEXT_PADDING * 3), FONT, FONT_SCALE, TEXT_COLOR, FONT_THICKNESS)
 
-def generate_camera_frames(camera, bg_subtractor):
+def draw_config_areas(frame):
+    """Draw the configured areas on the frame."""
+    # Draw wheel area
+    wheel = config['WHEEL_AREA']
+    cv2.rectangle(frame, (wheel['x1'], wheel['y1']), (wheel['x2'], wheel['y2']), (0, 255, 0), 2)
+    cv2.putText(frame, "Wheel", (wheel['x1'], wheel['y1'] - 10), FONT, FONT_SCALE, (0, 255, 0), FONT_THICKNESS)
+    
+    # Draw food area
+    food = config['FOOD_AREA']
+    cv2.rectangle(frame, (food['x1'], food['y1']), (food['x2'], food['y2']), (255, 0, 0), 2)
+    cv2.putText(frame, "Food", (food['x1'], food['y1'] - 10), FONT, FONT_SCALE, (255, 0, 0), FONT_THICKNESS)
+    
+    # Draw water area
+    water = config['WATER_AREA']
+    cv2.rectangle(frame, (water['x1'], water['y1']), (water['x2'], water['y2']), (0, 0, 255), 2)
+    cv2.putText(frame, "Water", (water['x1'], water['y1'] - 10), FONT, FONT_SCALE, (0, 0, 255), FONT_THICKNESS)
+
+def generate_camera_frames(camera, bg_subtractor, show_config=False):
     """Generate video frames from a camera with sensor data overlay."""
     prev_activity = "Exploring"
     no_movement_frames = 0
@@ -136,6 +177,10 @@ def generate_camera_frames(camera, bg_subtractor):
         current_time = get_current_timestamp()
         activity, no_movement_frames = detect_hamster_activity(frame, bg_subtractor, prev_activity, no_movement_frames)
         prev_activity = activity
+        
+        # Draw configuration areas if in config mode
+        if show_config:
+            draw_config_areas(frame)
         
         # Prepare text for overlay
         text1 = f"Time: {current_time}"
@@ -154,38 +199,94 @@ def generate_camera_frames(camera, bg_subtractor):
 @app.route('/camera1')
 def camera1_feed():
     """Stream video feed from camera 1 with sensor data overlay."""
-    return Response(generate_camera_frames(camera1, bg_subtractor1), mimetype='multipart/x-mixed-replace; boundary=frame')
+    show_config = request.args.get('config', 'false').lower() == 'true'
+    return Response(generate_camera_frames(camera1, bg_subtractor1, show_config), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/camera2')
 def camera2_feed():
     """Stream video feed from camera 2 with sensor data overlay."""
-    return Response(generate_camera_frames(camera2, bg_subtractor2), mimetype='multipart/x-mixed-replace; boundary=frame')
+    show_config = request.args.get('config', 'false').lower() == 'true'
+    return Response(generate_camera_frames(camera2, bg_subtractor2, show_config), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/config', methods=['GET', 'POST'])
+def handle_config():
+    """Handle configuration updates."""
+    if request.method == 'POST':
+        new_config = request.json
+        global config
+        config = new_config
+        save_config(config)
+        return jsonify({"status": "success"})
+    return jsonify(config)
 
 @app.route('/')
 def index():
-    """Serve a simple HTML page with both camera feeds."""
+    """Serve a simple HTML page with both camera feeds and configuration interface."""
     return """
     <html>
         <head>
-            <title>Dual Camera Feed</title>
+            <title>Hamster Monitor</title>
             <style>
-                body { margin: 0; padding: 20px; background: #333; }
+                body { margin: 0; padding: 20px; background: #333; color: white; }
                 .container { display: flex; gap: 20px; }
                 .camera-feed { flex: 1; }
                 img { width: 100%; height: auto; }
+                .controls { margin: 20px 0; }
+                button { padding: 10px 20px; margin: 0 10px; }
+                .config-panel { background: #444; padding: 20px; margin: 20px 0; border-radius: 5px; }
             </style>
         </head>
         <body>
+            <div class="controls">
+                <button onclick="toggleConfig()">Toggle Configuration Mode</button>
+                <button onclick="saveConfig()">Save Configuration</button>
+            </div>
             <div class="container">
                 <div class="camera-feed">
-                    <h2 style="color: white;">Camera 1</h2>
-                    <img src="/camera1" />
+                    <h2>Camera 1</h2>
+                    <img src="/camera1" id="camera1" />
                 </div>
                 <div class="camera-feed">
-                    <h2 style="color: white;">Camera 2</h2>
-                    <img src="/camera2" />
+                    <h2>Camera 2</h2>
+                    <img src="/camera2" id="camera2" />
                 </div>
             </div>
+            <div class="config-panel">
+                <h3>Configuration</h3>
+                <div id="config-values"></div>
+            </div>
+            <script>
+                let configMode = false;
+                
+                function toggleConfig() {
+                    configMode = !configMode;
+                    document.getElementById('camera1').src = '/camera1?config=' + configMode;
+                    document.getElementById('camera2').src = '/camera2?config=' + configMode;
+                }
+                
+                function saveConfig() {
+                    fetch('/config', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(window.currentConfig)
+                    });
+                }
+                
+                // Load initial configuration
+                fetch('/config')
+                    .then(response => response.json())
+                    .then(config => {
+                        window.currentConfig = config;
+                        updateConfigDisplay();
+                    });
+                
+                function updateConfigDisplay() {
+                    const configDiv = document.getElementById('config-values');
+                    configDiv.innerHTML = JSON.stringify(window.currentConfig, null, 2);
+                }
+            </script>
         </body>
     </html>
     """
