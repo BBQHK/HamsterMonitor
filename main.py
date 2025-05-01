@@ -16,10 +16,7 @@ FONT = cv2.FONT_HERSHEY_SIMPLEX
 BACKGROUND_ALPHA = 0.5
 TEXT_COLOR = (255, 255, 255)  # White
 BACKGROUND_COLOR = (0, 0, 0)  # Black
-TEXT_PADDING = 10
-TEXT_START_X = 10
-TEXT_START_Y = 20
-LINE_SPACING = 20
+TEXT_PADDING = 5
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -44,36 +41,6 @@ def get_current_timestamp():
     """Get current timestamp in formatted string."""
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-def add_text_overlay(frame, texts):
-    """Add text overlay with semi-transparent background to the frame."""
-    # Calculate maximum text width and total height
-    max_width = 0
-    total_height = 0
-    text_sizes = []
-    
-    for text in texts:
-        (width, height), _ = cv2.getTextSize(text, FONT, FONT_SCALE, FONT_THICKNESS)
-        text_sizes.append((width, height))
-        max_width = max(max_width, width)
-        total_height += height + LINE_SPACING
-    
-    # Add semi-transparent background
-    overlay = frame.copy()
-    cv2.rectangle(
-        overlay,
-        (TEXT_START_X - TEXT_PADDING, TEXT_START_Y - TEXT_PADDING),
-        (TEXT_START_X + max_width + TEXT_PADDING, TEXT_START_Y + total_height),
-        BACKGROUND_COLOR,
-        -1
-    )
-    cv2.addWeighted(overlay, BACKGROUND_ALPHA, frame, 1 - BACKGROUND_ALPHA, 0, frame)
-    
-    # Add text
-    y = TEXT_START_Y
-    for i, text in enumerate(texts):
-        cv2.putText(frame, text, (TEXT_START_X, y), FONT, FONT_SCALE, TEXT_COLOR, FONT_THICKNESS)
-        y += text_sizes[i][1] + LINE_SPACING
-
 def generate_frames():
     """Generate video frames with sensor data overlay."""
     while True:
@@ -86,13 +53,27 @@ def generate_frames():
         current_time = get_current_timestamp()
         
         # Prepare text for overlay
-        texts = [
-            f"Time: {current_time}",
-            f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%"
-        ]
+        text1 = f"Time: {current_time}"
+        text2 = f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%"
         
-        # Add text overlay to frame
-        add_text_overlay(frame, texts)
+        # Get text size
+        (text1_width, text1_height), _ = cv2.getTextSize(text1, FONT, FONT_SCALE, FONT_THICKNESS)
+        (text2_width, text2_height), _ = cv2.getTextSize(text2, FONT, FONT_SCALE, FONT_THICKNESS)
+        
+        # Add semi-transparent background
+        overlay = frame.copy()
+        cv2.rectangle(
+            overlay,
+            (TEXT_PADDING, TEXT_PADDING),
+            (TEXT_PADDING + max(text1_width, text2_width) + TEXT_PADDING, TEXT_PADDING + text1_height + text2_height + TEXT_PADDING),
+            BACKGROUND_COLOR,
+            -1
+        )
+        cv2.addWeighted(overlay, BACKGROUND_ALPHA, frame, 1 - BACKGROUND_ALPHA, 0, frame)
+        
+        # Add text
+        cv2.putText(frame, text1, (TEXT_PADDING + 5, TEXT_PADDING + 15), FONT, FONT_SCALE, TEXT_COLOR, FONT_THICKNESS)
+        cv2.putText(frame, text2, (TEXT_PADDING + 5, TEXT_PADDING + 35), FONT, FONT_SCALE, TEXT_COLOR, FONT_THICKNESS)
 
         # Encode frame as JPEG for MJPEG streaming
         ret, buffer = cv2.imencode('.jpg', frame)
