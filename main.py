@@ -9,6 +9,7 @@ import os
 
 # Constants
 CAMERA_INDEX_1 = 0  # First camera
+CAMERA_INDEX_2 = 1  # Second camera
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 FPS = 15
@@ -61,13 +62,22 @@ def setup_camera(camera_index):
     camera.set(cv2.CAP_PROP_EXPOSURE, -7)  # Lower exposure for night vision
     return camera
 
-# Initialize camera
+# Initialize both cameras
 camera1 = setup_camera(CAMERA_INDEX_1)
+camera2 = setup_camera(CAMERA_INDEX_2)
 
-# Initialize background subtractor with compatible parameters
+# Initialize background subtractors with adjusted parameters for night vision
 bg_subtractor1 = cv2.createBackgroundSubtractorMOG2(
     history=500,
-    detectShadows=False
+    detectShadows=False,
+    varThreshold=25,  # Increased threshold to be less sensitive
+    varThresholdGen=25
+)
+bg_subtractor2 = cv2.createBackgroundSubtractorMOG2(
+    history=500,
+    detectShadows=False,
+    varThreshold=25,
+    varThresholdGen=25
 )
 
 def get_simulated_readings():
@@ -216,6 +226,12 @@ def camera1_feed():
     """Stream video feed from camera 1 with sensor data overlay."""
     show_config = request.args.get('config', 'false').lower() == 'true'
     return Response(generate_camera_frames(camera1, bg_subtractor1, show_config), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/camera2')
+def camera2_feed():
+    """Stream video feed from camera 2 with sensor data overlay."""
+    show_config = request.args.get('config', 'false').lower() == 'true'
+    return Response(generate_camera_frames(camera2, bg_subtractor2, show_config), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/config', methods=['GET', 'POST'])
 def handle_config():
@@ -457,3 +473,4 @@ if __name__ == '__main__':
     finally:
         # Release camera resources when the application stops
         camera1.release()
+        camera2.release()
