@@ -56,12 +56,18 @@ def setup_camera(camera_index):
     camera.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
     camera.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
     camera.set(cv2.CAP_PROP_FPS, FPS)
+    # Adjust camera settings for night vision
+    camera.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0)  # Manual exposure
+    camera.set(cv2.CAP_PROP_EXPOSURE, -4)  # Higher exposure value for better night vision
+    camera.set(cv2.CAP_PROP_GAIN, 100)  # Increase gain for better visibility
+    camera.set(cv2.CAP_PROP_BRIGHTNESS, 100)  # Increase brightness
+    camera.set(cv2.CAP_PROP_CONTRAST, 100)  # Increase contrast
     return camera
 
 # Initialize camera
 camera1 = setup_camera(CAMERA_INDEX_1)
 
-# Initialize background subtractor
+# Initialize background subtractor with compatible parameters
 bg_subtractor1 = cv2.createBackgroundSubtractorMOG2(
     history=500,
     detectShadows=False
@@ -82,11 +88,22 @@ def detect_hamster_activity(frame, bg_subtractor, prev_activity, no_movement_fra
     if not config['ACTIVITY_DETECTION_ENABLED']:
         return "Activity detection disabled", no_movement_frames
         
+    # Adjust brightness and contrast for better night vision
+    frame = adjust_brightness_contrast(frame)
+    
+    # Apply stronger noise reduction for night vision
+    frame = cv2.GaussianBlur(frame, (7, 7), 0)
+    
     # Apply background subtraction
     fg_mask = bg_subtractor.apply(frame)
     
-    # Apply threshold to get binary image
-    _, thresh = cv2.threshold(fg_mask, 127, 255, cv2.THRESH_BINARY)
+    # Apply stronger morphological operations to reduce noise
+    kernel = np.ones((5,5), np.uint8)
+    fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, kernel)
+    fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, kernel)
+    
+    # Apply higher threshold to reduce sensitivity
+    _, thresh = cv2.threshold(fg_mask, 150, 255, cv2.THRESH_BINARY)
     
     # Calculate total movement
     movement = cv2.countNonZero(thresh)
