@@ -56,9 +56,12 @@ def setup_camera(camera_index):
     camera.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
     camera.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
     camera.set(cv2.CAP_PROP_FPS, FPS)
-    # Enable auto exposure for better night vision
-    camera.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)
-    camera.set(cv2.CAP_PROP_EXPOSURE, -7)  # Lower exposure for night vision
+    # Adjust camera settings for night vision
+    camera.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0)  # Manual exposure
+    camera.set(cv2.CAP_PROP_EXPOSURE, -4)  # Higher exposure value for better night vision
+    camera.set(cv2.CAP_PROP_GAIN, 100)  # Increase gain for better visibility
+    camera.set(cv2.CAP_PROP_BRIGHTNESS, 100)  # Increase brightness
+    camera.set(cv2.CAP_PROP_CONTRAST, 100)  # Increase contrast
     return camera
 
 # Initialize camera
@@ -76,24 +79,31 @@ def get_simulated_readings():
     humidity = 40.2
     return temperature, humidity
 
+def adjust_brightness_contrast(frame, alpha=1.5, beta=30):
+    """Adjust brightness and contrast of the frame."""
+    return cv2.convertScaleAbs(frame, alpha=alpha, beta=beta)
+
 def detect_hamster_activity(frame, bg_subtractor, prev_activity, no_movement_frames):
     """Detect hamster activity based on movement patterns."""
     if not config['ACTIVITY_DETECTION_ENABLED']:
         return "Activity detection disabled", no_movement_frames
         
-    # Apply noise reduction for night vision
-    frame = cv2.GaussianBlur(frame, (5, 5), 0)
+    # Adjust brightness and contrast for better night vision
+    frame = adjust_brightness_contrast(frame)
+    
+    # Apply stronger noise reduction for night vision
+    frame = cv2.GaussianBlur(frame, (7, 7), 0)
     
     # Apply background subtraction
     fg_mask = bg_subtractor.apply(frame)
     
-    # Apply morphological operations to reduce noise
-    kernel = np.ones((3,3), np.uint8)
+    # Apply stronger morphological operations to reduce noise
+    kernel = np.ones((5,5), np.uint8)
     fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, kernel)
     fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, kernel)
     
-    # Apply threshold to get binary image
-    _, thresh = cv2.threshold(fg_mask, 127, 255, cv2.THRESH_BINARY)
+    # Apply higher threshold to reduce sensitivity
+    _, thresh = cv2.threshold(fg_mask, 150, 255, cv2.THRESH_BINARY)
     
     # Calculate total movement
     movement = cv2.countNonZero(thresh)
