@@ -29,6 +29,7 @@ DEFAULT_CONFIG = {
     'MOVEMENT_THRESHOLD': 1000,
     'SLEEPING_THRESHOLD': 5,
     'ACTIVITY_DETECTION_ENABLED': True,
+    'SHOW_TEMP_HUM': True,
     'WHEEL_AREA': {'x1': 200, 'y1': 200, 'x2': 440, 'y2': 280},
     'FOOD_AREA': {'x1': 50, 'y1': 300, 'x2': 150, 'y2': 400},
     'WATER_AREA': {'x1': 450, 'y1': 300, 'x2': 550, 'y2': 400}
@@ -239,10 +240,11 @@ def generate_camera_frames(camera, bg_subtractor, show_config=False):
             draw_config_areas(frame)
         
         # Prepare text for overlay
-        texts = [
-            f"Time: {current_time}",
-            f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%"
-        ]
+        texts = [f"Time: {current_time}"]
+        
+        # Add temperature and humidity if enabled
+        if config['SHOW_TEMP_HUM']:
+            texts.append(f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%")
         
         # Only add activity text if activity detection is enabled
         if config['ACTIVITY_DETECTION_ENABLED']:
@@ -312,6 +314,7 @@ def index():
                 <button onclick="toggleConfig()">Toggle Configuration Mode</button>
                 <button onclick="saveConfig()">Save Configuration</button>
                 <button onclick="toggleActivityDetection()" id="activity-detection-btn">Disable Activity Detection</button>
+                <button onclick="toggleTempHum()" id="temp-hum-btn">Hide Temperature/Humidity</button>
             </div>
             <div class="container">
                 <div class="camera-feed">
@@ -392,6 +395,7 @@ def index():
             <script>
                 let configMode = false;
                 let activityDetectionEnabled = true;
+                let showTempHum = true;
                 
                 function showStatus(message, isError = false) {
                     const statusDiv = document.getElementById('status-message');
@@ -422,11 +426,26 @@ def index():
                     saveConfigToServer(config);
                 }
                 
+                function toggleTempHum() {
+                    showTempHum = !showTempHum;
+                    const button = document.getElementById('temp-hum-btn');
+                    button.textContent = showTempHum ? 'Hide Temperature/Humidity' : 'Show Temperature/Humidity';
+                    
+                    // Update the configuration
+                    const config = {
+                        ...getCurrentConfig(),
+                        SHOW_TEMP_HUM: showTempHum
+                    };
+                    
+                    saveConfigToServer(config);
+                }
+                
                 function getCurrentConfig() {
                     return {
                         MOVEMENT_THRESHOLD: parseInt(document.getElementById('movement-threshold').value),
                         SLEEPING_THRESHOLD: parseInt(document.getElementById('sleeping-threshold').value),
                         ACTIVITY_DETECTION_ENABLED: activityDetectionEnabled,
+                        SHOW_TEMP_HUM: showTempHum,
                         WHEEL_AREA: {
                             x1: parseInt(document.getElementById('wheel-x1').value),
                             y1: parseInt(document.getElementById('wheel-y1').value),
@@ -477,8 +496,11 @@ def index():
                         document.getElementById('movement-threshold').value = config.MOVEMENT_THRESHOLD;
                         document.getElementById('sleeping-threshold').value = config.SLEEPING_THRESHOLD;
                         activityDetectionEnabled = config.ACTIVITY_DETECTION_ENABLED;
+                        showTempHum = config.SHOW_TEMP_HUM;
                         document.getElementById('activity-detection-btn').textContent = 
                             activityDetectionEnabled ? 'Disable Activity Detection' : 'Enable Activity Detection';
+                        document.getElementById('temp-hum-btn').textContent = 
+                            showTempHum ? 'Hide Temperature/Humidity' : 'Show Temperature/Humidity';
                         
                         // Set wheel area
                         document.getElementById('wheel-x1').value = config.WHEEL_AREA.x1;
