@@ -240,6 +240,7 @@ def generate_camera_frames(camera, bg_subtractor, show_config=False):
         
         # Prepare text for overlay
         texts = [
+            f"Hamster Monitor",
             f"Time: {current_time}",
             f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%",
             f"Activity: {activity}"
