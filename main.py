@@ -69,26 +69,13 @@ bg_subtractor1 = cv2.createBackgroundSubtractorKNN(history=500, detectShadows=Fa
 
 # Store previous frames for frame differencing
 prev_frame1 = None
-# prev_frame2 = None
+prev_frame2 = None
 
 def get_simulated_readings():
     """Generate simulated temperature and humidity readings."""
     temperature = 22.5
     humidity = 40.2
     return temperature, humidity
-
-def detect_lighting_condition(frame):
-    """Detect if the frame is in day or night vision mode."""
-    if len(frame.shape) == 3:
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    else:
-        gray = frame
-    
-    # Calculate average brightness
-    avg_brightness = np.mean(gray)
-    
-    # If average brightness is below 50, consider it night vision
-    return avg_brightness < 50
 
 def detect_hamster_activity(frame, bg_subtractor, prev_activity, no_movement_frames, prev_frame=None):
     """Detect hamster activity based on movement patterns."""
@@ -101,21 +88,6 @@ def detect_hamster_activity(frame, bg_subtractor, prev_activity, no_movement_fra
     else:
         gray = frame
     
-    # Detect lighting condition
-    is_night_vision = detect_lighting_condition(frame)
-    
-    # Adjust parameters based on lighting condition
-    if is_night_vision:
-        # More sensitive settings for night vision
-        bg_subtractor.setDist2Threshold(400.0)  # Higher threshold for night vision
-        frame_diff_threshold = 25
-        morph_kernel_size = 3
-    else:
-        # Less sensitive settings for daylight
-        bg_subtractor.setDist2Threshold(600.0)  # Lower threshold for daylight
-        frame_diff_threshold = 30
-        morph_kernel_size = 5
-    
     # Apply background subtraction
     fg_mask = bg_subtractor.apply(gray)
     
@@ -124,10 +96,10 @@ def detect_hamster_activity(frame, bg_subtractor, prev_activity, no_movement_fra
         # Calculate absolute difference between frames
         frame_diff = cv2.absdiff(gray, prev_frame)
         # Apply threshold to get binary image
-        _, fg_mask = cv2.threshold(frame_diff, frame_diff_threshold, 255, cv2.THRESH_BINARY)
+        _, fg_mask = cv2.threshold(frame_diff, 25, 255, cv2.THRESH_BINARY)
     
     # Apply morphological operations to reduce noise
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (morph_kernel_size, morph_kernel_size))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, kernel)
     fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, kernel)
     
