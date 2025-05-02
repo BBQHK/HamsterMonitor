@@ -103,6 +103,7 @@ def detect_hamster_activity(frame, bg_subtractor, prev_activity, no_movement_fra
     
     # Detect lighting condition
     is_night_vision = detect_lighting_condition(frame)
+    print(is_night_vision)
     
     # Adjust parameters based on lighting condition
     if is_night_vision:
