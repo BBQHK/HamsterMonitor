@@ -9,7 +9,7 @@ import os
 
 # Constants
 CAMERA_INDEX_1 = 0  # First camera
-CAMERA_INDEX_2 = 1  # Second camera
+# CAMERA_INDEX_2 = 1  # Second camera
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 FPS = 15
@@ -61,11 +61,11 @@ def setup_camera(camera_index):
 
 # Initialize both cameras
 camera1 = setup_camera(CAMERA_INDEX_1)
-camera2 = setup_camera(CAMERA_INDEX_2)
+# camera2 = setup_camera(CAMERA_INDEX_2)
 
 # Initialize background subtractors
 bg_subtractor1 = cv2.createBackgroundSubtractorKNN(history=500, detectShadows=False, dist2Threshold=400.0)
-bg_subtractor2 = cv2.createBackgroundSubtractorKNN(history=500, detectShadows=False, dist2Threshold=400.0)
+# bg_subtractor2 = cv2.createBackgroundSubtractorKNN(history=500, detectShadows=False, dist2Threshold=400.0)
 
 # Store previous frames for frame differencing
 prev_frame1 = None
@@ -229,11 +229,11 @@ def camera1_feed():
     show_config = request.args.get('config', 'false').lower() == 'true'
     return Response(generate_camera_frames(camera1, bg_subtractor1, show_config), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-@app.route('/camera2')
-def camera2_feed():
-    """Stream video feed from camera 2 with sensor data overlay."""
-    show_config = request.args.get('config', 'false').lower() == 'true'
-    return Response(generate_camera_frames(camera2, bg_subtractor2, show_config), mimetype='multipart/x-mixed-replace; boundary=frame')
+# @app.route('/camera2')
+# def camera2_feed():
+#     """Stream video feed from camera 2 with sensor data overlay."""
+#     show_config = request.args.get('config', 'false').lower() == 'true'
+#     return Response(generate_camera_frames(camera2, bg_subtractor2, show_config), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/config', methods=['GET', 'POST'])
 def handle_config():
@@ -475,4 +475,4 @@ if __name__ == '__main__':
     finally:
         # Release camera resources when the application stops
         camera1.release()
-        camera2.release()
+        # camera2.release()
