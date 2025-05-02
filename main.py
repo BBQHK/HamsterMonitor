@@ -26,7 +26,7 @@ CONFIG_FILE = 'activity_areas.json'
 
 # Default activity detection constants
 DEFAULT_CONFIG = {
-    'MOVEMENT_THRESHOLD': 100,
+    'MOVEMENT_THRESHOLD': 20,
     'SLEEPING_THRESHOLD': 5,
     'ACTIVITY_DETECTION_ENABLED': True,
     'WHEEL_AREA': {'x1': 200, 'y1': 200, 'x2': 440, 'y2': 280},
