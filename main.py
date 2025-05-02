@@ -80,7 +80,7 @@ def get_simulated_readings():
 def detect_hamster_activity(frame, bg_subtractor, prev_activity, no_movement_frames, prev_frame=None):
     """Detect hamster activity based on movement patterns."""
     if not config['ACTIVITY_DETECTION_ENABLED']:
-        return "Activity detection disabled", no_movement_frames, frame, 0, 0, 0, 0
+        return "Activity detection disabled", no_movement_frames, frame
         
     # Convert to grayscale if not already
     if len(frame.shape) == 3:
@@ -107,7 +107,7 @@ def detect_hamster_activity(frame, bg_subtractor, prev_activity, no_movement_fra
     _, thresh = cv2.threshold(fg_mask, 127, 255, cv2.THRESH_BINARY)
     
     # Calculate total movement
-    total_movement = cv2.countNonZero(thresh)
+    movement = cv2.countNonZero(thresh)
     
     # Check if hamster is in wheel area
     wheel_area = config['WHEEL_AREA']
@@ -125,24 +125,24 @@ def detect_hamster_activity(frame, bg_subtractor, prev_activity, no_movement_fra
     water_movement = cv2.countNonZero(water_roi)
     
     # Update no movement frames counter
-    if total_movement < config['MOVEMENT_THRESHOLD']:
+    if movement < config['MOVEMENT_THRESHOLD']:
         no_movement_frames += 1
     else:
         no_movement_frames = 0
     
     # Determine activity based on movement patterns
     if no_movement_frames >= config['SLEEPING_THRESHOLD']:
-        return "Sleeping", no_movement_frames, gray, total_movement, wheel_movement, food_movement, water_movement
+        return "Sleeping", no_movement_frames, gray
     elif wheel_movement > config['MOVEMENT_THRESHOLD'] * 0.5:
-        return "Running on wheel", no_movement_frames, gray, total_movement, wheel_movement, food_movement, water_movement
+        return "Running on wheel", no_movement_frames, gray
     elif food_movement > config['MOVEMENT_THRESHOLD'] * 0.3:
-        return "Eating", no_movement_frames, gray, total_movement, wheel_movement, food_movement, water_movement
+        return "Eating", no_movement_frames, gray
     elif water_movement > config['MOVEMENT_THRESHOLD'] * 0.3:
-        return "Drinking water", no_movement_frames, gray, total_movement, wheel_movement, food_movement, water_movement
-    elif total_movement > config['MOVEMENT_THRESHOLD']:
-        return "Exploring", no_movement_frames, gray, total_movement, wheel_movement, food_movement, water_movement
+        return "Drinking water", no_movement_frames, gray
+    elif movement > config['MOVEMENT_THRESHOLD']:
+        return "Exploring", no_movement_frames, gray
     else:
-        return prev_activity, no_movement_frames, gray, total_movement, wheel_movement, food_movement, water_movement
+        return prev_activity, no_movement_frames, gray
 
 def get_current_timestamp():
     """Get current timestamp in formatted string."""
@@ -231,9 +231,7 @@ def generate_camera_frames(camera, bg_subtractor, show_config=False):
         # Get sensor readings and detect activity
         temperature, humidity = get_simulated_readings()
         current_time = get_current_timestamp()
-        activity, no_movement_frames, prev_frame, total_movement, wheel_movement, food_movement, water_movement = detect_hamster_activity(
-            frame, bg_subtractor, prev_activity, no_movement_frames, prev_frame
-        )
+        activity, no_movement_frames, prev_frame = detect_hamster_activity(frame, bg_subtractor, prev_activity, no_movement_frames, prev_frame)
         prev_activity = activity
         
         # Draw configuration areas if in config mode
@@ -244,9 +242,7 @@ def generate_camera_frames(camera, bg_subtractor, show_config=False):
         texts = [
             f"Time: {current_time}",
             f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%",
-            f"Activity: {activity}",
-            f"Total Movement: {total_movement}",
-            f"Wheel: {wheel_movement}  Food: {food_movement}  Water: {water_movement}"
+            f"Activity: {activity}"
         ]
         
         # Add text overlay
