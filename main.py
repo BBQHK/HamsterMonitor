@@ -241,9 +241,12 @@ def generate_camera_frames(camera, bg_subtractor, show_config=False):
         # Prepare text for overlay
         texts = [
             f"Time: {current_time}",
-            f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%",
-            f"Activity: {activity}"
+            f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%"
         ]
+        
+        # Only add activity text if activity detection is enabled
+        if config['ACTIVITY_DETECTION_ENABLED']:
+            texts.append(f"Activity: {activity}")
         
         # Add text overlay
         add_text_overlay(frame, texts)
