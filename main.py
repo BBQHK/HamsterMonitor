@@ -64,8 +64,12 @@ camera1 = setup_camera(CAMERA_INDEX_1)
 camera2 = setup_camera(CAMERA_INDEX_2)
 
 # Initialize background subtractors
-bg_subtractor1 = cv2.createBackgroundSubtractorMOG2(history=500, detectShadows=False)
-bg_subtractor2 = cv2.createBackgroundSubtractorMOG2(history=500, detectShadows=False)
+bg_subtractor1 = cv2.createBackgroundSubtractorKNN(history=500, detectShadows=False, dist2Threshold=400.0)
+bg_subtractor2 = cv2.createBackgroundSubtractorKNN(history=500, detectShadows=False, dist2Threshold=400.0)
+
+# Store previous frames for frame differencing
+prev_frame1 = None
+prev_frame2 = None
 
 def get_simulated_readings():
     """Generate simulated temperature and humidity readings."""
@@ -73,13 +77,31 @@ def get_simulated_readings():
     humidity = 40.2
     return temperature, humidity
 
-def detect_hamster_activity(frame, bg_subtractor, prev_activity, no_movement_frames):
+def detect_hamster_activity(frame, bg_subtractor, prev_activity, no_movement_frames, prev_frame=None):
     """Detect hamster activity based on movement patterns."""
     if not config['ACTIVITY_DETECTION_ENABLED']:
-        return "Activity detection disabled", no_movement_frames
+        return "Activity detection disabled", no_movement_frames, frame
         
+    # Convert to grayscale if not already
+    if len(frame.shape) == 3:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = frame
+    
     # Apply background subtraction
-    fg_mask = bg_subtractor.apply(frame)
+    fg_mask = bg_subtractor.apply(gray)
+    
+    # If the mask is mostly empty, try frame differencing as fallback
+    if cv2.countNonZero(fg_mask) < 100 and prev_frame is not None:
+        # Calculate absolute difference between frames
+        frame_diff = cv2.absdiff(gray, prev_frame)
+        # Apply threshold to get binary image
+        _, fg_mask = cv2.threshold(frame_diff, 25, 255, cv2.THRESH_BINARY)
+    
+    # Apply morphological operations to reduce noise
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, kernel)
+    fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, kernel)
     
     # Apply threshold to get binary image
     _, thresh = cv2.threshold(fg_mask, 127, 255, cv2.THRESH_BINARY)
@@ -110,17 +132,17 @@ def detect_hamster_activity(frame, bg_subtractor, prev_activity, no_movement_fra
     
     # Determine activity based on movement patterns
     if no_movement_frames >= config['SLEEPING_THRESHOLD']:
-        return "Sleeping", no_movement_frames
+        return "Sleeping", no_movement_frames, gray
     elif wheel_movement > config['MOVEMENT_THRESHOLD'] * 0.5:
-        return "Running on wheel", no_movement_frames
+        return "Running on wheel", no_movement_frames, gray
     elif food_movement > config['MOVEMENT_THRESHOLD'] * 0.3:
-        return "Eating", no_movement_frames
+        return "Eating", no_movement_frames, gray
     elif water_movement > config['MOVEMENT_THRESHOLD'] * 0.3:
-        return "Drinking water", no_movement_frames
+        return "Drinking water", no_movement_frames, gray
     elif movement > config['MOVEMENT_THRESHOLD']:
-        return "Exploring", no_movement_frames
+        return "Exploring", no_movement_frames, gray
     else:
-        return prev_activity, no_movement_frames
+        return prev_activity, no_movement_frames, gray
 
 def get_current_timestamp():
     """Get current timestamp in formatted string."""
@@ -170,6 +192,7 @@ def generate_camera_frames(camera, bg_subtractor, show_config=False):
     """Generate video frames from a camera with sensor data overlay."""
     prev_activity = "Exploring"
     no_movement_frames = 0
+    prev_frame = None
     
     while True:
         success, frame = camera.read()
@@ -179,7 +202,7 @@ def generate_camera_frames(camera, bg_subtractor, show_config=False):
         # Get sensor readings and detect activity
         temperature, humidity = get_simulated_readings()
         current_time = get_current_timestamp()
-        activity, no_movement_frames = detect_hamster_activity(frame, bg_subtractor, prev_activity, no_movement_frames)
+        activity, no_movement_frames, prev_frame = detect_hamster_activity(frame, bg_subtractor, prev_activity, no_movement_frames, prev_frame)
         prev_activity = activity
         
         # Draw configuration areas if in config mode
