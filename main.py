@@ -148,28 +148,57 @@ def get_current_timestamp():
     """Get current timestamp in formatted string."""
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-def add_text_overlay(frame, text1, text2, text3):
-    """Add text overlay to a frame."""
-    # Get text size
-    (text1_width, text1_height), _ = cv2.getTextSize(text1, FONT, FONT_SCALE, FONT_THICKNESS)
-    (text2_width, text2_height), _ = cv2.getTextSize(text2, FONT, FONT_SCALE, FONT_THICKNESS)
-    (text3_width, text3_height), _ = cv2.getTextSize(text3, FONT, FONT_SCALE, FONT_THICKNESS)
+def add_text_overlay(frame, texts):
+    """Add text overlay to a frame.
+    
+    Args:
+        frame: The frame to add text overlay to
+        texts: Array of text strings to display
+    """
+    if not texts:
+        return
+        
+    # Calculate total height needed and max width
+    total_height = 0
+    max_width = 0
+    text_sizes = []
+    
+    for text in texts:
+        (width, height), _ = cv2.getTextSize(text, FONT, FONT_SCALE, FONT_THICKNESS)
+        text_sizes.append((width, height))
+        max_width = max(max_width, width)
+        total_height += height
+    
+    # Add padding between texts and around the box
+    padding = TEXT_PADDING
+    total_height += padding * (len(texts) + 1)  # Padding between texts and around the box
+    max_width += padding * 2  # Padding on both sides
     
     # Add semi-transparent background
     overlay = frame.copy()
     cv2.rectangle(
         overlay,
-        (TEXT_PADDING, TEXT_PADDING),
-        (TEXT_PADDING + max(text1_width, text2_width, text3_width) + TEXT_PADDING * 2, TEXT_PADDING + text1_height + text2_height + text3_height + TEXT_PADDING * 4),
+        (padding, padding),
+        (padding + max_width, padding + total_height),
         BACKGROUND_COLOR,
         -1
     )
     cv2.addWeighted(overlay, BACKGROUND_ALPHA, frame, 1 - BACKGROUND_ALPHA, 0, frame)
     
     # Add text
-    cv2.putText(frame, text1, (TEXT_PADDING + 5, TEXT_PADDING + text1_height + 5), FONT, FONT_SCALE, TEXT_COLOR, FONT_THICKNESS)
-    cv2.putText(frame, text2, (TEXT_PADDING + 5, TEXT_PADDING + text1_height + text2_height + TEXT_PADDING * 2), FONT, FONT_SCALE, TEXT_COLOR, FONT_THICKNESS)
-    cv2.putText(frame, text3, (TEXT_PADDING + 5, TEXT_PADDING + text1_height + text2_height + text3_height + TEXT_PADDING * 3), FONT, FONT_SCALE, TEXT_COLOR, FONT_THICKNESS)
+    y = padding + text_sizes[0][1] + padding
+    for i, text in enumerate(texts):
+        cv2.putText(
+            frame, 
+            text, 
+            (padding + 5, y), 
+            FONT, 
+            FONT_SCALE, 
+            TEXT_COLOR, 
+            FONT_THICKNESS
+        )
+        if i < len(texts) - 1:
+            y += text_sizes[i + 1][1] + padding
 
 def draw_config_areas(frame):
     """Draw the configured areas on the frame."""
@@ -210,12 +239,14 @@ def generate_camera_frames(camera, bg_subtractor, show_config=False):
             draw_config_areas(frame)
         
         # Prepare text for overlay
-        text1 = f"Time: {current_time}"
-        text2 = f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%"
-        text3 = f"Activity: {activity}"
+        texts = [
+            f"Time: {current_time}",
+            f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%",
+            f"Activity: {activity}"
+        ]
         
         # Add text overlay
-        add_text_overlay(frame, text1, text2, text3)
+        add_text_overlay(frame, texts)
 
         # Encode frame as JPEG for MJPEG streaming
         ret, buffer = cv2.imencode('.jpg', frame)
