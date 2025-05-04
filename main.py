@@ -6,6 +6,7 @@ import numpy as np
 from datetime import datetime
 import json
 import os
+from ai_activity_detector import HamsterActivityDetector
 
 # Constants
 CAMERA_INDEX_1 = 0  # First camera
@@ -51,6 +52,9 @@ config = load_config()
 
 # Initialize Flask app
 app = Flask(__name__)
+
+# Initialize AI activity detector
+activity_detector = HamsterActivityDetector()
 
 # Camera setup
 def setup_camera(camera_index):
@@ -232,12 +236,16 @@ def generate_camera_frames(camera, bg_subtractor, show_config=False):
         # Get sensor readings and detect activity
         temperature, humidity = get_simulated_readings()
         current_time = get_current_timestamp()
-        activity, no_movement_frames, prev_frame = detect_hamster_activity(frame, bg_subtractor, prev_activity, no_movement_frames, prev_frame)
-        prev_activity = activity
+        
+        # Use AI to detect activity
+        activity, activity_probs = activity_detector.detect_activity(frame)
         
         # Draw configuration areas if in config mode
         if show_config:
             draw_config_areas(frame)
+        
+        # Add AI activity overlay
+        frame = activity_detector.draw_activity_overlay(frame, activity, activity_probs)
         
         # Prepare text for overlay
         texts = [f"Time: {current_time}"]
@@ -245,10 +253,6 @@ def generate_camera_frames(camera, bg_subtractor, show_config=False):
         # Add temperature and humidity if enabled
         if config['SHOW_TEMP_HUM']:
             texts.append(f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%")
-        
-        # Only add activity text if activity detection is enabled
-        if config['ACTIVITY_DETECTION_ENABLED']:
-            texts.append(f"Activity: {activity}")
         
         # Add text overlay
         add_text_overlay(frame, texts)
@@ -282,6 +286,12 @@ def handle_config():
         return jsonify({"status": "success"})
     return jsonify(config)
 
+@app.route('/activity_pattern')
+def get_activity_pattern():
+    """Get the current activity pattern analysis."""
+    pattern = activity_detector.get_activity_pattern()
+    return jsonify(pattern)
+
 @app.route('/')
 def index():
     """Serve a simple HTML page with camera feed and configuration interface."""
@@ -307,19 +317,25 @@ def index():
                 .status-message { margin: 10px 0; padding: 10px; border-radius: 4px; }
                 .success { background: #4CAF50; }
                 .error { background: #f44336; }
+                .activity-chart { margin-top: 20px; padding: 10px; background: #444; border-radius: 5px; }
+                .activity-bar { height: 20px; margin: 5px 0; background: #666; border-radius: 3px; }
+                .activity-bar-fill { height: 100%; background: #4CAF50; border-radius: 3px; }
             </style>
         </head>
         <body>
             <div class="controls">
                 <button onclick="toggleConfig()">Toggle Configuration Mode</button>
                 <button onclick="saveConfig()">Save Configuration</button>
-                <button onclick="toggleActivityDetection()" id="activity-detection-btn">Disable Activity Detection</button>
                 <button onclick="toggleTempHum()" id="temp-hum-btn">Hide Temperature/Humidity</button>
             </div>
             <div class="container">
                 <div class="camera-feed">
                     <h2>Camera Feed</h2>
                     <img src="/camera1" id="camera1" />
+                    <div class="activity-chart">
+                        <h3>Activity Analysis</h3>
+                        <div id="activity-bars"></div>
+                    </div>
                 </div>
                 <div class="config-panel">
                     <h3>Configuration Settings</h3>
@@ -520,6 +536,39 @@ def index():
                         document.getElementById('water-x2').value = config.WATER_AREA.x2;
                         document.getElementById('water-y2').value = config.WATER_AREA.y2;
                     });
+                
+                // Update activity chart
+                function updateActivityChart() {
+                    fetch('/activity_pattern')
+                        .then(response => response.json())
+                        .then(data => {
+                            const container = document.getElementById('activity-bars');
+                            container.innerHTML = '';
+                            
+                            for (const [activity, probability] of Object.entries(data)) {
+                                const bar = document.createElement('div');
+                                bar.className = 'activity-bar';
+                                
+                                const fill = document.createElement('div');
+                                fill.className = 'activity-bar-fill';
+                                fill.style.width = `${probability * 100}%`;
+                                
+                                const label = document.createElement('span');
+                                label.textContent = `${activity}: ${(probability * 100).toFixed(1)}%`;
+                                label.style.marginLeft = '10px';
+                                
+                                bar.appendChild(fill);
+                                bar.appendChild(label);
+                                container.appendChild(bar);
+                            }
+                        });
+                }
+                
+                // Update activity chart every 2 seconds
+                setInterval(updateActivityChart, 2000);
+                
+                // Initial update
+                updateActivityChart();
             </script>
         </body>
     </html>
