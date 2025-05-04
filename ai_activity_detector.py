@@ -4,16 +4,27 @@ from ultralytics import YOLO
 import torch
 from typing import Tuple, List, Dict
 import time
+import os
+from pathlib import Path
 
 class HamsterActivityDetector:
-    def __init__(self, model_path: str = 'yolov8n.pt'):
+    def __init__(self, model_path: str = None):
         """
-        Initialize the Hamster Activity Detector with YOLOv8 model.
+        Initialize the Hamster Activity Detector.
         
         Args:
-            model_path: Path to the YOLOv8 model weights
+            model_path: Path to the custom trained YOLOv8 model weights
+                       If None, will use the default YOLOv8n model (not recommended for production)
         """
-        self.model = YOLO(model_path)
+        if model_path is None:
+            print("WARNING: Using default YOLOv8n model. This model is not trained for hamster activity detection.")
+            print("Please train a custom model using the train() method before using in production.")
+            self.model = YOLO('yolov8n.pt')
+        else:
+            if not os.path.exists(model_path):
+                raise FileNotFoundError(f"Model file not found: {model_path}")
+            self.model = YOLO(model_path)
+            
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.model.to(self.device)
         
@@ -38,6 +49,35 @@ class HamsterActivityDetector:
         # Activity history for temporal analysis
         self.activity_history = []
         self.max_history = 30  # Keep last 30 frames of activity
+        
+    @staticmethod
+    def train(data_yaml: str, epochs: int = 100, imgsz: int = 640, batch: int = 16):
+        """
+        Train a custom YOLOv8 model for hamster activity detection.
+        
+        Args:
+            data_yaml: Path to the YAML file containing dataset configuration
+            epochs: Number of training epochs
+            imgsz: Image size for training
+            batch: Batch size for training
+            
+        Returns:
+            Path to the trained model
+        """
+        # Create a new YOLOv8 model
+        model = YOLO('yolov8n.pt')
+        
+        # Train the model
+        results = model.train(
+            data=data_yaml,
+            epochs=epochs,
+            imgsz=imgsz,
+            batch=batch,
+            name='hamster_activity_detector'
+        )
+        
+        # Return path to the best model
+        return Path('runs/detect/hamster_activity_detector/weights/best.pt')
         
     def detect_activity(self, frame: np.ndarray) -> Tuple[str, Dict[str, float]]:
         """
