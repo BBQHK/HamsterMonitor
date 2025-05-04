@@ -134,7 +134,7 @@ def detect_hamster_activity(frame, bg_subtractor, prev_activity, no_movement_fra
     # Determine activity based on movement patterns
     if no_movement_frames >= config['RESTING_THRESHOLD']:
         return "Resting", no_movement_frames, gray
-    elif wheel_movement > config['MOVEMENT_THRESHOLD'] * 0.5:
+    elif wheel_movement > config['MOVEMENT_THRESHOLD'] * 0.3:
         return "Running on wheel", no_movement_frames, gray
     elif food_movement > config['MOVEMENT_THRESHOLD'] * 0.3:
         return "Eating", no_movement_frames, gray
