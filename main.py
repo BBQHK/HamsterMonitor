@@ -27,7 +27,7 @@ CONFIG_FILE = 'activity_areas.json'
 # Default activity detection constants
 DEFAULT_CONFIG = {
     'MOVEMENT_THRESHOLD': 1000,
-    'SLEEPING_THRESHOLD': 5,
+    'RESTING_THRESHOLD': 5,
     'ACTIVITY_DETECTION_ENABLED': True,
     'SHOW_TEMP_HUM': True,
     'WHEEL_AREA': {'x1': 200, 'y1': 200, 'x2': 440, 'y2': 280},
@@ -132,8 +132,8 @@ def detect_hamster_activity(frame, bg_subtractor, prev_activity, no_movement_fra
         no_movement_frames = 0
     
     # Determine activity based on movement patterns
-    if no_movement_frames >= config['SLEEPING_THRESHOLD']:
-        return "Sleeping", no_movement_frames, gray
+    if no_movement_frames >= config['RESTING_THRESHOLD']:
+        return "Resting", no_movement_frames, gray
     elif wheel_movement > config['MOVEMENT_THRESHOLD'] * 0.5:
         return "Running on wheel", no_movement_frames, gray
     elif food_movement > config['MOVEMENT_THRESHOLD'] * 0.3:
@@ -332,8 +332,8 @@ def index():
                             <input type="number" id="movement-threshold" value="1000">
                         </div>
                         <div class="config-input">
-                            <label>Sleeping Threshold:</label>
-                            <input type="number" id="sleeping-threshold" value="5">
+                            <label>Resting Threshold:</label>
+                            <input type="number" id="resting-threshold" value="5">
                         </div>
                     </div>
 
@@ -443,7 +443,7 @@ def index():
                 function getCurrentConfig() {
                     return {
                         MOVEMENT_THRESHOLD: parseInt(document.getElementById('movement-threshold').value),
-                        SLEEPING_THRESHOLD: parseInt(document.getElementById('sleeping-threshold').value),
+                        RESTING_THRESHOLD: parseInt(document.getElementById('resting-threshold').value),
                         ACTIVITY_DETECTION_ENABLED: activityDetectionEnabled,
                         SHOW_TEMP_HUM: showTempHum,
                         WHEEL_AREA: {
@@ -494,7 +494,7 @@ def index():
                     .then(config => {
                         // Set general settings
                         document.getElementById('movement-threshold').value = config.MOVEMENT_THRESHOLD;
-                        document.getElementById('sleeping-threshold').value = config.SLEEPING_THRESHOLD;
+                        document.getElementById('resting-threshold').value = config.RESTING_THRESHOLD;
                         activityDetectionEnabled = config.ACTIVITY_DETECTION_ENABLED;
                         showTempHum = config.SHOW_TEMP_HUM;
                         document.getElementById('activity-detection-btn').textContent = 
