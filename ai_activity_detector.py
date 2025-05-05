@@ -32,18 +32,14 @@ class HamsterActivityDetector:
         self.activity_states = {
             'running': 0,
             'eating': 0,
-            'drinking': 0,
-            'sleeping': 0,
-            'exploring': 0
+            'drinking': 0
         }
         
         # Activity thresholds
         self.activity_thresholds = {
             'running': 0.5,
             'eating': 0.4,
-            'drinking': 0.4,
-            'sleeping': 0.6,
-            'exploring': 0.3
+            'drinking': 0.4
         }
         
         # Activity history for temporal analysis
@@ -103,25 +99,18 @@ class HamsterActivityDetector:
         activity_probs = {
             'running': 0.0,
             'eating': 0.0,
-            'drinking': 0.0,
-            'sleeping': 0.0,
-            'exploring': 0.0
+            'drinking': 0.0
         }
         
         # Process detections
         for conf, cls in zip(confidences, classes):
             # Map YOLO classes to activities
-            if cls == 0:  # hamster
-                # Analyze position and movement
-                activity_probs['exploring'] = conf
-            elif cls == 1:  # wheel
+            if cls == 0:  # wheel
                 activity_probs['running'] = conf
-            elif cls == 2:  # food
+            elif cls == 1:  # food
                 activity_probs['eating'] = conf
-            elif cls == 3:  # water
+            elif cls == 2:  # water
                 activity_probs['drinking'] = conf
-            elif cls == 4:  # sleeping area
-                activity_probs['sleeping'] = conf
         
         # Update activity history
         self.activity_history.append(activity_probs)
