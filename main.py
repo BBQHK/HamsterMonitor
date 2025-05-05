@@ -27,13 +27,7 @@ CONFIG_FILE = 'activity_areas.json'
 
 # Default activity detection constants
 DEFAULT_CONFIG = {
-    'MOVEMENT_THRESHOLD': 1000,
-    'RESTING_THRESHOLD': 5,
-    'ACTIVITY_DETECTION_ENABLED': True,
-    'SHOW_TEMP_HUM': True,
-    'WHEEL_AREA': {'x1': 200, 'y1': 200, 'x2': 440, 'y2': 280},
-    'FOOD_AREA': {'x1': 50, 'y1': 300, 'x2': 150, 'y2': 400},
-    'WATER_AREA': {'x1': 450, 'y1': 300, 'x2': 550, 'y2': 400}
+    'SHOW_TEMP_HUM': True
 }
 
 # Load or create configuration
@@ -68,86 +62,11 @@ def setup_camera(camera_index):
 camera1 = setup_camera(CAMERA_INDEX_1)
 # camera2 = setup_camera(CAMERA_INDEX_2)
 
-# Initialize background subtractors
-bg_subtractor1 = cv2.createBackgroundSubtractorKNN(history=500, detectShadows=False, dist2Threshold=400.0)
-# bg_subtractor2 = cv2.createBackgroundSubtractorKNN(history=500, detectShadows=False, dist2Threshold=400.0)
-
-# Store previous frames for frame differencing
-prev_frame1 = None
-prev_frame2 = None
-
 def get_simulated_readings():
     """Generate simulated temperature and humidity readings."""
     temperature = 22.5
     humidity = 40.2
     return temperature, humidity
-
-def detect_hamster_activity(frame, bg_subtractor, prev_activity, no_movement_frames, prev_frame=None):
-    """Detect hamster activity based on movement patterns."""
-    if not config['ACTIVITY_DETECTION_ENABLED']:
-        return "Activity detection disabled", no_movement_frames, frame
-        
-    # Convert to grayscale if not already
-    if len(frame.shape) == 3:
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    else:
-        gray = frame
-    
-    # Apply background subtraction
-    fg_mask = bg_subtractor.apply(gray)
-    
-    # If the mask is mostly empty, try frame differencing as fallback
-    if cv2.countNonZero(fg_mask) < 100 and prev_frame is not None:
-        # Calculate absolute difference between frames
-        frame_diff = cv2.absdiff(gray, prev_frame)
-        # Apply threshold to get binary image
-        _, fg_mask = cv2.threshold(frame_diff, 25, 255, cv2.THRESH_BINARY)
-    
-    # Apply morphological operations to reduce noise
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, kernel)
-    fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, kernel)
-    
-    # Apply threshold to get binary image
-    _, thresh = cv2.threshold(fg_mask, 127, 255, cv2.THRESH_BINARY)
-    
-    # Calculate total movement
-    movement = cv2.countNonZero(thresh)
-    
-    # Check if hamster is in wheel area
-    wheel_area = config['WHEEL_AREA']
-    wheel_roi = thresh[wheel_area['y1']:wheel_area['y2'], wheel_area['x1']:wheel_area['x2']]
-    wheel_movement = cv2.countNonZero(wheel_roi)
-    
-    # Check if hamster is in food area
-    food_area = config['FOOD_AREA']
-    food_roi = thresh[food_area['y1']:food_area['y2'], food_area['x1']:food_area['x2']]
-    food_movement = cv2.countNonZero(food_roi)
-    
-    # Check if hamster is in water area
-    water_area = config['WATER_AREA']
-    water_roi = thresh[water_area['y1']:water_area['y2'], water_area['x1']:water_area['x2']]
-    water_movement = cv2.countNonZero(water_roi)
-    
-    # Update no movement frames counter
-    if movement < config['MOVEMENT_THRESHOLD']:
-        no_movement_frames += 1
-    else:
-        no_movement_frames = 0
-    
-    # Determine activity based on movement patterns
-    if no_movement_frames >= config['RESTING_THRESHOLD']:
-        return "Resting", no_movement_frames, gray
-    elif wheel_movement > config['MOVEMENT_THRESHOLD'] * 0.5:
-        return "Running on wheel", no_movement_frames, gray
-    elif food_movement > config['MOVEMENT_THRESHOLD'] * 0.3:
-        return "Eating", no_movement_frames, gray
-    elif water_movement > config['MOVEMENT_THRESHOLD'] * 0.3:
-        return "Drinking water", no_movement_frames, gray
-    elif movement > config['MOVEMENT_THRESHOLD']:
-        return "Exploring", no_movement_frames, gray
-    else:
-        return prev_activity, no_movement_frames, gray
 
 def get_current_timestamp():
     """Get current timestamp in formatted string."""
@@ -205,29 +124,8 @@ def add_text_overlay(frame, texts):
         if i < len(texts) - 1:
             y += text_sizes[i + 1][1] + padding
 
-def draw_config_areas(frame):
-    """Draw the configured areas on the frame."""
-    # Draw wheel area
-    wheel = config['WHEEL_AREA']
-    cv2.rectangle(frame, (wheel['x1'], wheel['y1']), (wheel['x2'], wheel['y2']), (0, 255, 0), 2)
-    cv2.putText(frame, "Wheel", (wheel['x1'], wheel['y1'] - 10), FONT, FONT_SCALE, (0, 255, 0), FONT_THICKNESS)
-    
-    # Draw food area
-    food = config['FOOD_AREA']
-    cv2.rectangle(frame, (food['x1'], food['y1']), (food['x2'], food['y2']), (255, 0, 0), 2)
-    cv2.putText(frame, "Food", (food['x1'], food['y1'] - 10), FONT, FONT_SCALE, (255, 0, 0), FONT_THICKNESS)
-    
-    # Draw water area
-    water = config['WATER_AREA']
-    cv2.rectangle(frame, (water['x1'], water['y1']), (water['x2'], water['y2']), (0, 0, 255), 2)
-    cv2.putText(frame, "Water", (water['x1'], water['y1'] - 10), FONT, FONT_SCALE, (0, 0, 255), FONT_THICKNESS)
-
-def generate_camera_frames(camera, bg_subtractor, show_config=False):
+def generate_camera_frames(camera, show_config=False):
     """Generate video frames from a camera with sensor data overlay."""
-    prev_activity = "Exploring"
-    no_movement_frames = 0
-    prev_frame = None
-    
     while True:
         success, frame = camera.read()
         if not success:
@@ -239,10 +137,6 @@ def generate_camera_frames(camera, bg_subtractor, show_config=False):
         
         # Use AI to detect activity
         activity, activity_probs = activity_detector.detect_activity(frame)
-        
-        # Draw configuration areas if in config mode
-        if show_config:
-            draw_config_areas(frame)
         
         # Add AI activity overlay
         frame = activity_detector.draw_activity_overlay(frame, activity, activity_probs)
@@ -267,13 +161,13 @@ def generate_camera_frames(camera, bg_subtractor, show_config=False):
 def camera1_feed():
     """Stream video feed from camera 1 with sensor data overlay."""
     show_config = request.args.get('config', 'false').lower() == 'true'
-    return Response(generate_camera_frames(camera1, bg_subtractor1, show_config), mimetype='multipart/x-mixed-replace; boundary=frame')
+    return Response(generate_camera_frames(camera1, show_config), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 # @app.route('/camera2')
 # def camera2_feed():
 #     """Stream video feed from camera 2 with sensor data overlay."""
 #     show_config = request.args.get('config', 'false').lower() == 'true'
-#     return Response(generate_camera_frames(camera2, bg_subtractor2, show_config), mimetype='multipart/x-mixed-replace; boundary=frame')
+#     return Response(generate_camera_frames(camera2, show_config), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/config', methods=['GET', 'POST'])
 def handle_config():
@@ -308,12 +202,6 @@ def index():
                 .controls { margin: 20px 0; }
                 button { padding: 10px 20px; margin: 0 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; }
                 button:hover { background: #45a049; }
-                .config-section { margin-bottom: 20px; }
-                .config-section h4 { margin: 10px 0; color: #4CAF50; }
-                .config-input { margin: 5px 0; }
-                .config-input label { display: inline-block; width: 150px; }
-                .config-input input { width: 80px; padding: 5px; margin-right: 10px; }
-                .area-box { border: 1px solid #666; padding: 10px; margin: 10px 0; background: #555; }
                 .status-message { margin: 10px 0; padding: 10px; border-radius: 4px; }
                 .success { background: #4CAF50; }
                 .error { background: #f44336; }
@@ -324,8 +212,6 @@ def index():
         </head>
         <body>
             <div class="controls">
-                <button onclick="toggleConfig()">Toggle Configuration Mode</button>
-                <button onclick="saveConfig()">Save Configuration</button>
                 <button onclick="toggleTempHum()" id="temp-hum-btn">Hide Temperature/Humidity</button>
             </div>
             <div class="container">
@@ -340,77 +226,9 @@ def index():
                 <div class="config-panel">
                     <h3>Configuration Settings</h3>
                     <div id="status-message" class="status-message" style="display: none;"></div>
-                    
-                    <div class="config-section">
-                        <h4>General Settings</h4>
-                        <div class="config-input">
-                            <label>Movement Threshold:</label>
-                            <input type="number" id="movement-threshold" value="1000">
-                        </div>
-                        <div class="config-input">
-                            <label>Resting Threshold:</label>
-                            <input type="number" id="resting-threshold" value="5">
-                        </div>
-                    </div>
-
-                    <div class="config-section">
-                        <h4>Wheel Area</h4>
-                        <div class="area-box">
-                            <div class="config-input">
-                                <label>X1:</label>
-                                <input type="number" id="wheel-x1" value="200">
-                                <label>Y1:</label>
-                                <input type="number" id="wheel-y1" value="200">
-                            </div>
-                            <div class="config-input">
-                                <label>X2:</label>
-                                <input type="number" id="wheel-x2" value="440">
-                                <label>Y2:</label>
-                                <input type="number" id="wheel-y2" value="280">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="config-section">
-                        <h4>Food Area</h4>
-                        <div class="area-box">
-                            <div class="config-input">
-                                <label>X1:</label>
-                                <input type="number" id="food-x1" value="50">
-                                <label>Y1:</label>
-                                <input type="number" id="food-y1" value="300">
-                            </div>
-                            <div class="config-input">
-                                <label>X2:</label>
-                                <input type="number" id="food-x2" value="150">
-                                <label>Y2:</label>
-                                <input type="number" id="food-y2" value="400">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="config-section">
-                        <h4>Water Area</h4>
-                        <div class="area-box">
-                            <div class="config-input">
-                                <label>X1:</label>
-                                <input type="number" id="water-x1" value="450">
-                                <label>Y1:</label>
-                                <input type="number" id="water-y1" value="300">
-                            </div>
-                            <div class="config-input">
-                                <label>X2:</label>
-                                <input type="number" id="water-x2" value="550">
-                                <label>Y2:</label>
-                                <input type="number" id="water-y2" value="400">
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
             <script>
-                let configMode = false;
-                let activityDetectionEnabled = true;
                 let showTempHum = true;
                 
                 function showStatus(message, isError = false) {
@@ -421,25 +239,6 @@ def index():
                     setTimeout(() => {
                         statusDiv.style.display = 'none';
                     }, 3000);
-                }
-                
-                function toggleConfig() {
-                    configMode = !configMode;
-                    document.getElementById('camera1').src = '/camera1?config=' + configMode;
-                }
-                
-                function toggleActivityDetection() {
-                    activityDetectionEnabled = !activityDetectionEnabled;
-                    const button = document.getElementById('activity-detection-btn');
-                    button.textContent = activityDetectionEnabled ? 'Disable Activity Detection' : 'Enable Activity Detection';
-                    
-                    // Update the configuration
-                    const config = {
-                        ...getCurrentConfig(),
-                        ACTIVITY_DETECTION_ENABLED: activityDetectionEnabled
-                    };
-                    
-                    saveConfigToServer(config);
                 }
                 
                 function toggleTempHum() {
@@ -458,28 +257,7 @@ def index():
                 
                 function getCurrentConfig() {
                     return {
-                        MOVEMENT_THRESHOLD: parseInt(document.getElementById('movement-threshold').value),
-                        RESTING_THRESHOLD: parseInt(document.getElementById('resting-threshold').value),
-                        ACTIVITY_DETECTION_ENABLED: activityDetectionEnabled,
-                        SHOW_TEMP_HUM: showTempHum,
-                        WHEEL_AREA: {
-                            x1: parseInt(document.getElementById('wheel-x1').value),
-                            y1: parseInt(document.getElementById('wheel-y1').value),
-                            x2: parseInt(document.getElementById('wheel-x2').value),
-                            y2: parseInt(document.getElementById('wheel-y2').value)
-                        },
-                        FOOD_AREA: {
-                            x1: parseInt(document.getElementById('food-x1').value),
-                            y1: parseInt(document.getElementById('food-y1').value),
-                            x2: parseInt(document.getElementById('food-x2').value),
-                            y2: parseInt(document.getElementById('food-y2').value)
-                        },
-                        WATER_AREA: {
-                            x1: parseInt(document.getElementById('water-x1').value),
-                            y1: parseInt(document.getElementById('water-y1').value),
-                            x2: parseInt(document.getElementById('water-x2').value),
-                            y2: parseInt(document.getElementById('water-y2').value)
-                        }
+                        SHOW_TEMP_HUM: showTempHum
                     };
                 }
                 
@@ -500,41 +278,14 @@ def index():
                     });
                 }
                 
-                function saveConfig() {
-                    saveConfigToServer(getCurrentConfig());
-                }
-                
                 // Load initial configuration
                 fetch('/config')
                     .then(response => response.json())
                     .then(config => {
                         // Set general settings
-                        document.getElementById('movement-threshold').value = config.MOVEMENT_THRESHOLD;
-                        document.getElementById('resting-threshold').value = config.RESTING_THRESHOLD;
-                        activityDetectionEnabled = config.ACTIVITY_DETECTION_ENABLED;
                         showTempHum = config.SHOW_TEMP_HUM;
-                        document.getElementById('activity-detection-btn').textContent = 
-                            activityDetectionEnabled ? 'Disable Activity Detection' : 'Enable Activity Detection';
                         document.getElementById('temp-hum-btn').textContent = 
                             showTempHum ? 'Hide Temperature/Humidity' : 'Show Temperature/Humidity';
-                        
-                        // Set wheel area
-                        document.getElementById('wheel-x1').value = config.WHEEL_AREA.x1;
-                        document.getElementById('wheel-y1').value = config.WHEEL_AREA.y1;
-                        document.getElementById('wheel-x2').value = config.WHEEL_AREA.x2;
-                        document.getElementById('wheel-y2').value = config.WHEEL_AREA.y2;
-                        
-                        // Set food area
-                        document.getElementById('food-x1').value = config.FOOD_AREA.x1;
-                        document.getElementById('food-y1').value = config.FOOD_AREA.y1;
-                        document.getElementById('food-x2').value = config.FOOD_AREA.x2;
-                        document.getElementById('food-y2').value = config.FOOD_AREA.y2;
-                        
-                        // Set water area
-                        document.getElementById('water-x1').value = config.WATER_AREA.x1;
-                        document.getElementById('water-y1').value = config.WATER_AREA.y1;
-                        document.getElementById('water-x2').value = config.WATER_AREA.x2;
-                        document.getElementById('water-y2').value = config.WATER_AREA.y2;
                     });
                 
                 // Update activity chart
