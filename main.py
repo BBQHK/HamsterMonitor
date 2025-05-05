@@ -198,6 +198,8 @@ def camera1_feed():
 def get_activity_pattern():
     """Get the current activity pattern analysis."""
     pattern = activity_detector.get_activity_pattern()
+    # Convert numpy float32 values to regular Python floats
+    pattern = {k: float(v) for k, v in pattern.items()}
     return jsonify(pattern)
 
 @app.route('/')
@@ -208,59 +210,116 @@ def index():
         <head>
             <title>Hamster Monitor</title>
             <style>
-                body { margin: 0; padding: 20px; background: #333; color: white; }
-                .container { max-width: 1200px; margin: 0 auto; }
-                .camera-feed { margin-bottom: 20px; }
-                img { width: 100%; height: auto; }
-                .activity-chart { 
-                    margin-top: 20px; 
-                    padding: 20px; 
-                    background: #444; 
-                    border-radius: 8px;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                :root {
+                    --primary-color: #4CAF50;
+                    --background-dark: #333;
+                    --background-light: #444;
+                    --text-color: white;
+                    --text-secondary: #888;
+                    --border-radius: 8px;
+                    --box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                    --spacing: 20px;
                 }
+
+                body { 
+                    margin: 0; 
+                    padding: var(--spacing); 
+                    background: var(--background-dark); 
+                    color: var(--text-color);
+                    font-family: Arial, sans-serif;
+                }
+
+                .container { 
+                    max-width: 1200px; 
+                    margin: 0 auto; 
+                }
+
+                .main-content {
+                    display: flex;
+                    gap: var(--spacing);
+                    align-items: flex-start;
+                }
+
+                .camera-feed { 
+                    flex: 2;
+                    background: var(--background-light);
+                    padding: var(--spacing);
+                    border-radius: var(--border-radius);
+                    box-shadow: var(--box-shadow);
+                }
+
+                .camera-feed h2 {
+                    margin: 0 0 var(--spacing) 0;
+                    color: var(--primary-color);
+                    font-size: 1.5em;
+                }
+
+                .activity-chart { 
+                    flex: 1;
+                    padding: var(--spacing); 
+                    background: var(--background-light); 
+                    border-radius: var(--border-radius);
+                    box-shadow: var(--box-shadow);
+                    position: sticky;
+                    top: var(--spacing);
+                }
+
                 .activity-chart h3 { 
-                    margin: 0 0 15px 0;
-                    color: #4CAF50;
+                    margin: 0 0 var(--spacing) 0;
+                    color: var(--primary-color);
                     font-size: 1.2em;
                 }
+
+                img { 
+                    width: 100%; 
+                    height: auto;
+                    border-radius: var(--border-radius);
+                }
+
                 .activity-bar { 
                     height: 30px; 
                     margin: 8px 0; 
-                    background: #555; 
-                    border-radius: 4px;
+                    background: var(--background-dark); 
+                    border-radius: var(--border-radius);
                     display: flex;
                     align-items: center;
                     padding: 0 10px;
                 }
+
                 .activity-bar-fill { 
                     height: 20px; 
-                    background: #4CAF50; 
-                    border-radius: 3px;
+                    background: var(--primary-color); 
+                    border-radius: var(--border-radius);
                     transition: width 0.3s ease;
                 }
+
                 .activity-label {
                     margin-left: 10px;
                     font-size: 0.9em;
                     min-width: 150px;
                 }
+
                 .activity-probability {
                     margin-left: auto;
                     font-weight: bold;
-                    color: #4CAF50;
+                    color: var(--primary-color);
                 }
+
                 .activity-timestamp {
                     font-size: 0.8em;
-                    color: #888;
-                    margin-top: 5px;
+                    color: var(--text-secondary);
+                    margin-top: var(--spacing);
+                    text-align: right;
                 }
             </style>
         </head>
         <body>
             <div class="container">
-                <div class="camera-feed">
-                    <h2>Camera Feed</h2>
-                    <img src="/camera1" id="camera1" />
+                <div class="main-content">
+                    <div class="camera-feed">
+                        <h2>Camera Feed</h2>
+                        <img src="/camera1" id="camera1" />
+                    </div>
                     <div class="activity-chart">
                         <h3>Activity Analysis</h3>
                         <div id="activity-bars"></div>
