@@ -133,38 +133,6 @@ class HamsterActivityDetector:
         
         return most_likely_activity, activity_probs
     
-    def draw_activity_overlay(self, frame: np.ndarray, activity: str, probabilities: Dict[str, float]) -> np.ndarray:
-        """
-        Draw activity information overlay on the frame.
-        
-        Args:
-            frame: Input frame
-            activity: Current activity
-            probabilities: Activity probabilities
-            
-        Returns:
-            Frame with activity overlay
-        """
-        # Create overlay
-        overlay = frame.copy()
-        height, width = frame.shape[:2]
-        
-        # Draw semi-transparent background
-        cv2.rectangle(overlay, (0, 0), (width, 100), (0, 0, 0), -1)
-        cv2.addWeighted(overlay, 0.5, frame, 0.5, 0, frame)
-        
-        # Draw activity text
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        cv2.putText(frame, f"Activity: {activity}", (10, 30), font, 0.7, (255, 255, 255), 2)
-        
-        # Draw probabilities
-        y = 60
-        for act, prob in probabilities.items():
-            cv2.putText(frame, f"{act}: {prob:.2f}", (10, y), font, 0.5, (255, 255, 255), 1)
-            y += 20
-        
-        return frame
-    
     def get_activity_pattern(self) -> Dict[str, float]:
         """
         Analyze activity patterns over time.

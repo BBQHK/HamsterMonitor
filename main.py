@@ -168,12 +168,10 @@ def generate_camera_frames(camera, show_config=False):
         # Use AI to detect activity
         activity, activity_probs = activity_detector.detect_activity(frame)
         
-        # Add AI activity overlay
-        frame = activity_detector.draw_activity_overlay(frame, activity, activity_probs)
-        
         # Prepare text for overlay
         texts = [f"Time: {current_time}"]
         texts.append(f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%")
+        texts.append(f"Activity: {activity} ({activity_probs[activity]*100:.1f}%)")
         
         # Add text overlay
         add_text_overlay(frame, texts)
