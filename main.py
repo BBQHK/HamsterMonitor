@@ -22,45 +22,74 @@ TEXT_COLOR = (255, 255, 255)  # White
 BACKGROUND_COLOR = (0, 0, 0)  # Black
 TEXT_PADDING = 5
 
-# Configuration file path
-CONFIG_FILE = 'activity_areas.json'
-
-# Default activity detection constants
-DEFAULT_CONFIG = {
-    'SHOW_TEMP_HUM': True
-}
-
-# Load or create configuration
-def load_config():
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, 'r') as f:
-            return json.load(f)
-    return DEFAULT_CONFIG
-
-def save_config(config):
-    with open(CONFIG_FILE, 'w') as f:
-        json.dump(config, f, indent=4)
-
-# Initialize configuration
-config = load_config()
-
 # Initialize Flask app
 app = Flask(__name__)
 
 # Initialize AI activity detector
 activity_detector = HamsterActivityDetector()
 
-# Camera setup
+# Global settings
+show_temp_hum = True
+
+def list_available_cameras():
+    """List all available cameras on the system."""
+    available_cameras = []
+    for i in range(10):  # Check first 10 indices
+        cap = cv2.VideoCapture(i)
+        if cap.isOpened():
+            available_cameras.append(i)
+            cap.release()
+    return available_cameras
+
 def setup_camera(camera_index):
-    camera = cv2.VideoCapture(camera_index)
+    """Setup camera with proper configuration for Windows."""
+    # Try to open the camera
+    camera = cv2.VideoCapture(camera_index, cv2.CAP_DSHOW)  # Use DirectShow for Windows
+    
+    if not camera.isOpened():
+        # Try without DirectShow if it fails
+        camera = cv2.VideoCapture(camera_index)
+        if not camera.isOpened():
+            raise RuntimeError(f"Failed to open camera with index {camera_index}")
+    
+    # Set camera properties
     camera.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
     camera.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
     camera.set(cv2.CAP_PROP_FPS, FPS)
+    
+    # Try to set auto exposure and focus
+    try:
+        camera.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)  # 1 = manual mode
+        camera.set(cv2.CAP_PROP_EXPOSURE, -4)  # Adjust exposure (value depends on camera)
+        camera.set(cv2.CAP_PROP_AUTOFOCUS, 0)  # 0 = manual focus
+    except:
+        print("Warning: Could not set camera properties. Some features may not work.")
+    
     return camera
 
-# Initialize both cameras
-camera1 = setup_camera(CAMERA_INDEX_1)
-# camera2 = setup_camera(CAMERA_INDEX_2)
+# Initialize cameras
+try:
+    available_cameras = list_available_cameras()
+    print(f"Available cameras: {available_cameras}")
+    
+    if not available_cameras:
+        raise RuntimeError("No cameras found!")
+    
+    camera1 = setup_camera(available_cameras[0])
+    print(f"Successfully initialized camera {available_cameras[0]}")
+    
+    # Uncomment if you want to use a second camera
+    # if len(available_cameras) > 1:
+    #     camera2 = setup_camera(available_cameras[1])
+    #     print(f"Successfully initialized camera {available_cameras[1]}")
+    # else:
+    #     camera2 = None
+    #     print("No second camera found")
+    
+except Exception as e:
+    print(f"Error initializing cameras: {e}")
+    camera1 = None
+    # camera2 = None
 
 def get_simulated_readings():
     """Generate simulated temperature and humidity readings."""
@@ -126,9 +155,21 @@ def add_text_overlay(frame, texts):
 
 def generate_camera_frames(camera, show_config=False):
     """Generate video frames from a camera with sensor data overlay."""
+    if camera is None:
+        # Generate a black frame with error message
+        frame = np.zeros((FRAME_HEIGHT, FRAME_WIDTH, 3), dtype=np.uint8)
+        cv2.putText(frame, "Camera not available", (50, FRAME_HEIGHT//2), 
+                   FONT, FONT_SCALE, TEXT_COLOR, FONT_THICKNESS)
+        ret, buffer = cv2.imencode('.jpg', frame)
+        frame = buffer.tobytes()
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+        return
+
     while True:
         success, frame = camera.read()
         if not success:
+            print("Failed to read frame from camera")
             break
 
         # Get sensor readings and detect activity
@@ -145,7 +186,7 @@ def generate_camera_frames(camera, show_config=False):
         texts = [f"Time: {current_time}"]
         
         # Add temperature and humidity if enabled
-        if config['SHOW_TEMP_HUM']:
+        if show_temp_hum:
             texts.append(f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%")
         
         # Add text overlay
@@ -160,25 +201,22 @@ def generate_camera_frames(camera, show_config=False):
 @app.route('/camera1')
 def camera1_feed():
     """Stream video feed from camera 1 with sensor data overlay."""
-    show_config = request.args.get('config', 'false').lower() == 'true'
-    return Response(generate_camera_frames(camera1, show_config), mimetype='multipart/x-mixed-replace; boundary=frame')
+    return Response(generate_camera_frames(camera1), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 # @app.route('/camera2')
 # def camera2_feed():
 #     """Stream video feed from camera 2 with sensor data overlay."""
-#     show_config = request.args.get('config', 'false').lower() == 'true'
-#     return Response(generate_camera_frames(camera2, show_config), mimetype='multipart/x-mixed-replace; boundary=frame')
+#     return Response(generate_camera_frames(camera2), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/config', methods=['GET', 'POST'])
 def handle_config():
     """Handle configuration updates."""
+    global show_temp_hum
     if request.method == 'POST':
         new_config = request.json
-        global config
-        config = new_config
-        save_config(config)
+        show_temp_hum = new_config.get('SHOW_TEMP_HUM', show_temp_hum)
         return jsonify({"status": "success"})
-    return jsonify(config)
+    return jsonify({"SHOW_TEMP_HUM": show_temp_hum})
 
 @app.route('/activity_pattern')
 def get_activity_pattern():
@@ -195,9 +233,8 @@ def index():
             <title>Hamster Monitor</title>
             <style>
                 body { margin: 0; padding: 20px; background: #333; color: white; }
-                .container { display: flex; gap: 20px; }
-                .camera-feed { flex: 2; }
-                .config-panel { flex: 1; background: #444; padding: 20px; border-radius: 5px; }
+                .container { max-width: 1200px; margin: 0 auto; }
+                .camera-feed { margin-bottom: 20px; }
                 img { width: 100%; height: auto; }
                 .controls { margin: 20px 0; }
                 button { padding: 10px 20px; margin: 0 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; }
@@ -211,10 +248,10 @@ def index():
             </style>
         </head>
         <body>
-            <div class="controls">
-                <button onclick="toggleTempHum()" id="temp-hum-btn">Hide Temperature/Humidity</button>
-            </div>
             <div class="container">
+                <div class="controls">
+                    <button onclick="toggleTempHum()" id="temp-hum-btn">Hide Temperature/Humidity</button>
+                </div>
                 <div class="camera-feed">
                     <h2>Camera Feed</h2>
                     <img src="/camera1" id="camera1" />
@@ -223,21 +260,17 @@ def index():
                         <div id="activity-bars"></div>
                     </div>
                 </div>
-                <div class="config-panel">
-                    <h3>Configuration Settings</h3>
-                    <div id="status-message" class="status-message" style="display: none;"></div>
-                </div>
             </div>
             <script>
                 let showTempHum = true;
                 
                 function showStatus(message, isError = false) {
-                    const statusDiv = document.getElementById('status-message');
-                    statusDiv.textContent = message;
+                    const statusDiv = document.createElement('div');
                     statusDiv.className = `status-message ${isError ? 'error' : 'success'}`;
-                    statusDiv.style.display = 'block';
+                    statusDiv.textContent = message;
+                    document.body.insertBefore(statusDiv, document.querySelector('.container'));
                     setTimeout(() => {
-                        statusDiv.style.display = 'none';
+                        statusDiv.remove();
                     }, 3000);
                 }
                 
@@ -247,27 +280,12 @@ def index():
                     button.textContent = showTempHum ? 'Hide Temperature/Humidity' : 'Show Temperature/Humidity';
                     
                     // Update the configuration
-                    const config = {
-                        ...getCurrentConfig(),
-                        SHOW_TEMP_HUM: showTempHum
-                    };
-                    
-                    saveConfigToServer(config);
-                }
-                
-                function getCurrentConfig() {
-                    return {
-                        SHOW_TEMP_HUM: showTempHum
-                    };
-                }
-                
-                function saveConfigToServer(config) {
                     fetch('/config', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                         },
-                        body: JSON.stringify(config)
+                        body: JSON.stringify({ SHOW_TEMP_HUM: showTempHum })
                     })
                     .then(response => response.json())
                     .then(data => {
@@ -282,7 +300,6 @@ def index():
                 fetch('/config')
                     .then(response => response.json())
                     .then(config => {
-                        // Set general settings
                         showTempHum = config.SHOW_TEMP_HUM;
                         document.getElementById('temp-hum-btn').textContent = 
                             showTempHum ? 'Hide Temperature/Humidity' : 'Show Temperature/Humidity';
@@ -330,5 +347,7 @@ if __name__ == '__main__':
         app.run(host='0.0.0.0', port=8081, threaded=True)
     finally:
         # Release camera resources when the application stops
-        camera1.release()
-        # camera2.release()
+        if camera1:
+            camera1.release()
+        # if camera2:
+        #     camera2.release()
