@@ -26,7 +26,7 @@ TEXT_PADDING = 5
 app = Flask(__name__)
 
 # Initialize AI activity detector
-activity_detector = HamsterActivityDetector()
+activity_detector = HamsterActivityDetector("best.pt")
 
 def list_available_cameras():
     """List all available cameras on the system."""
