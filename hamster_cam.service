@@ -1,0 +1,10 @@
+[Unit]
+Description=Hamster Cam MJPEG Stream
+After=network.target
+[Service]
+User=king
+WorkingDirectory=/home/king/Desktop/HamsterMonitor
+ExecStart=/usr/bin/python3 /home/king/Desktop/HamsterMonitor/main.py
+Restart=always
+[Install]
+WantedBy=multi-user.target
