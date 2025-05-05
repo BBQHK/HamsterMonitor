@@ -28,9 +28,6 @@ app = Flask(__name__)
 # Initialize AI activity detector
 activity_detector = HamsterActivityDetector()
 
-# Global settings
-show_temp_hum = True
-
 def list_available_cameras():
     """List all available cameras on the system."""
     available_cameras = []
@@ -56,14 +53,6 @@ def setup_camera(camera_index):
     camera.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
     camera.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
     camera.set(cv2.CAP_PROP_FPS, FPS)
-    
-    # Try to set auto exposure and focus
-    try:
-        camera.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)  # 1 = manual mode
-        camera.set(cv2.CAP_PROP_EXPOSURE, -4)  # Adjust exposure (value depends on camera)
-        camera.set(cv2.CAP_PROP_AUTOFOCUS, 0)  # 0 = manual focus
-    except:
-        print("Warning: Could not set camera properties. Some features may not work.")
     
     return camera
 
@@ -184,10 +173,7 @@ def generate_camera_frames(camera, show_config=False):
         
         # Prepare text for overlay
         texts = [f"Time: {current_time}"]
-        
-        # Add temperature and humidity if enabled
-        if show_temp_hum:
-            texts.append(f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%")
+        texts.append(f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%")
         
         # Add text overlay
         add_text_overlay(frame, texts)
@@ -208,16 +194,6 @@ def camera1_feed():
 #     """Stream video feed from camera 2 with sensor data overlay."""
 #     return Response(generate_camera_frames(camera2), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-@app.route('/config', methods=['GET', 'POST'])
-def handle_config():
-    """Handle configuration updates."""
-    global show_temp_hum
-    if request.method == 'POST':
-        new_config = request.json
-        show_temp_hum = new_config.get('SHOW_TEMP_HUM', show_temp_hum)
-        return jsonify({"status": "success"})
-    return jsonify({"SHOW_TEMP_HUM": show_temp_hum})
-
 @app.route('/activity_pattern')
 def get_activity_pattern():
     """Get the current activity pattern analysis."""
@@ -236,22 +212,52 @@ def index():
                 .container { max-width: 1200px; margin: 0 auto; }
                 .camera-feed { margin-bottom: 20px; }
                 img { width: 100%; height: auto; }
-                .controls { margin: 20px 0; }
-                button { padding: 10px 20px; margin: 0 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; }
-                button:hover { background: #45a049; }
-                .status-message { margin: 10px 0; padding: 10px; border-radius: 4px; }
-                .success { background: #4CAF50; }
-                .error { background: #f44336; }
-                .activity-chart { margin-top: 20px; padding: 10px; background: #444; border-radius: 5px; }
-                .activity-bar { height: 20px; margin: 5px 0; background: #666; border-radius: 3px; }
-                .activity-bar-fill { height: 100%; background: #4CAF50; border-radius: 3px; }
+                .activity-chart { 
+                    margin-top: 20px; 
+                    padding: 20px; 
+                    background: #444; 
+                    border-radius: 8px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                }
+                .activity-chart h3 { 
+                    margin: 0 0 15px 0;
+                    color: #4CAF50;
+                    font-size: 1.2em;
+                }
+                .activity-bar { 
+                    height: 30px; 
+                    margin: 8px 0; 
+                    background: #555; 
+                    border-radius: 4px;
+                    display: flex;
+                    align-items: center;
+                    padding: 0 10px;
+                }
+                .activity-bar-fill { 
+                    height: 20px; 
+                    background: #4CAF50; 
+                    border-radius: 3px;
+                    transition: width 0.3s ease;
+                }
+                .activity-label {
+                    margin-left: 10px;
+                    font-size: 0.9em;
+                    min-width: 150px;
+                }
+                .activity-probability {
+                    margin-left: auto;
+                    font-weight: bold;
+                    color: #4CAF50;
+                }
+                .activity-timestamp {
+                    font-size: 0.8em;
+                    color: #888;
+                    margin-top: 5px;
+                }
             </style>
         </head>
         <body>
             <div class="container">
-                <div class="controls">
-                    <button onclick="toggleTempHum()" id="temp-hum-btn">Hide Temperature/Humidity</button>
-                </div>
                 <div class="camera-feed">
                     <h2>Camera Feed</h2>
                     <img src="/camera1" id="camera1" />
@@ -262,49 +268,6 @@ def index():
                 </div>
             </div>
             <script>
-                let showTempHum = true;
-                
-                function showStatus(message, isError = false) {
-                    const statusDiv = document.createElement('div');
-                    statusDiv.className = `status-message ${isError ? 'error' : 'success'}`;
-                    statusDiv.textContent = message;
-                    document.body.insertBefore(statusDiv, document.querySelector('.container'));
-                    setTimeout(() => {
-                        statusDiv.remove();
-                    }, 3000);
-                }
-                
-                function toggleTempHum() {
-                    showTempHum = !showTempHum;
-                    const button = document.getElementById('temp-hum-btn');
-                    button.textContent = showTempHum ? 'Hide Temperature/Humidity' : 'Show Temperature/Humidity';
-                    
-                    // Update the configuration
-                    fetch('/config', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ SHOW_TEMP_HUM: showTempHum })
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        showStatus('Configuration saved successfully!');
-                    })
-                    .catch(error => {
-                        showStatus('Error saving configuration: ' + error, true);
-                    });
-                }
-                
-                // Load initial configuration
-                fetch('/config')
-                    .then(response => response.json())
-                    .then(config => {
-                        showTempHum = config.SHOW_TEMP_HUM;
-                        document.getElementById('temp-hum-btn').textContent = 
-                            showTempHum ? 'Hide Temperature/Humidity' : 'Show Temperature/Humidity';
-                    });
-                
                 // Update activity chart
                 function updateActivityChart() {
                     fetch('/activity_pattern')
@@ -313,7 +276,11 @@ def index():
                             const container = document.getElementById('activity-bars');
                             container.innerHTML = '';
                             
-                            for (const [activity, probability] of Object.entries(data)) {
+                            // Sort activities by probability
+                            const sortedActivities = Object.entries(data)
+                                .sort((a, b) => b[1] - a[1]);
+                            
+                            for (const [activity, probability] of sortedActivities) {
                                 const bar = document.createElement('div');
                                 bar.className = 'activity-bar';
                                 
@@ -322,13 +289,24 @@ def index():
                                 fill.style.width = `${probability * 100}%`;
                                 
                                 const label = document.createElement('span');
-                                label.textContent = `${activity}: ${(probability * 100).toFixed(1)}%`;
-                                label.style.marginLeft = '10px';
+                                label.className = 'activity-label';
+                                label.textContent = activity;
+                                
+                                const prob = document.createElement('span');
+                                prob.className = 'activity-probability';
+                                prob.textContent = `${(probability * 100).toFixed(1)}%`;
                                 
                                 bar.appendChild(fill);
                                 bar.appendChild(label);
+                                bar.appendChild(prob);
                                 container.appendChild(bar);
                             }
+                            
+                            // Add timestamp
+                            const timestamp = document.createElement('div');
+                            timestamp.className = 'activity-timestamp';
+                            timestamp.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
+                            container.appendChild(timestamp);
                         });
                 }
                 
