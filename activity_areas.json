@@ -1,7 +1,7 @@
 {
     "MOVEMENT_THRESHOLD": 20,
     "RESTING_THRESHOLD": 100,
-    "ACTIVITY_DETECTION_ENABLED": true,
+    "ACTIVITY_DETECTION_ENABLED": false,
     "SHOW_TEMP_HUM": false,
     "WHEEL_AREA": {
         "x1": 347,
