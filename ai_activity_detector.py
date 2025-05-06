@@ -46,35 +46,6 @@ class HamsterActivityDetector:
         self.activity_history = []
         self.max_history = 30  # Keep last 30 frames of activity
         
-    @staticmethod
-    def train(data_yaml: str, epochs: int = 100, imgsz: int = 640, batch: int = 16):
-        """
-        Train a custom YOLOv8 model for hamster activity detection.
-        
-        Args:
-            data_yaml: Path to the YAML file containing dataset configuration
-            epochs: Number of training epochs
-            imgsz: Image size for training
-            batch: Batch size for training
-            
-        Returns:
-            Path to the trained model
-        """
-        # Create a new YOLOv8 model
-        model = YOLO('yolov8n.pt')
-        
-        # Train the model
-        results = model.train(
-            data=data_yaml,
-            epochs=epochs,
-            imgsz=imgsz,
-            batch=batch,
-            name='hamster_activity_detector'
-        )
-        
-        # Return path to the best model
-        return Path('runs/detect/hamster_activity_detector/weights/best.pt')
-        
     def detect_activity(self, frame: np.ndarray) -> Tuple[str, Dict[str, float]]:
         """
         Detect hamster activity in the given frame.
