@@ -106,9 +106,9 @@ class HamsterActivityDetector:
         for conf, cls in zip(confidences, classes):
             # Map YOLO classes to activities
             if cls == 0:  # wheel
-                activity_probs['running'] = conf
-            elif cls == 1:  # food
                 activity_probs['eating'] = conf
+            elif cls == 1:  # food
+                activity_probs['running'] = conf
             elif cls == 2:  # water
                 activity_probs['drinking'] = conf
         
