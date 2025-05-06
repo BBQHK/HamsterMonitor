@@ -2,7 +2,7 @@ from flask import Flask, Response
 import cv2
 
 # Constants
-CAMERA_INDEX = 0
+MAX_CAMERAS = 2  # Maximum number of cameras to support
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 FPS = 30
@@ -10,19 +10,33 @@ FPS = 30
 # Initialize Flask app
 app = Flask(__name__)
 
-# Camera setup
+# Dictionary to store camera objects
+cameras = {}
+
 def setup_camera(camera_index):
+    """Setup a camera with specified index."""
     camera = cv2.VideoCapture(camera_index)
     camera.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
     camera.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
     camera.set(cv2.CAP_PROP_FPS, FPS)
     return camera
 
-# Initialize camera
-camera = setup_camera(CAMERA_INDEX)
+def get_camera(camera_index):
+    """Get or create a camera object for the given index."""
+    if camera_index not in cameras:
+        camera = setup_camera(camera_index)
+        if camera.isOpened():
+            cameras[camera_index] = camera
+        else:
+            return None
+    return cameras[camera_index]
 
-def generate_frames():
-    """Generate video frames from camera."""
+def generate_frames(camera_index):
+    """Generate video frames from specified camera."""
+    camera = get_camera(camera_index)
+    if camera is None:
+        return
+    
     while True:
         success, frame = camera.read()
         if not success:
@@ -34,28 +48,60 @@ def generate_frames():
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
-@app.route('/camera')
-def camera_feed():
-    """Stream video feed from camera."""
-    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+@app.route('/camera<int:camera_number>')
+def camera_feed(camera_number):
+    """Stream video feed from specified camera number."""
+    if camera_number < 0 or camera_number >= MAX_CAMERAS:
+        return "Invalid camera number", 400
+    return Response(generate_frames(camera_number), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/')
 def index():
-    """Serve a simple HTML page with camera feed."""
+    """Serve a simple HTML page with camera feeds."""
     return """
     <html>
         <head>
-            <title>Camera Feed</title>
+            <title>Multi-Camera Feed</title>
             <style>
                 body { margin: 0; padding: 20px; background: #333; color: white; }
-                .camera-feed { max-width: 800px; margin: 0 auto; }
+                .camera-grid { 
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+                    gap: 20px;
+                    max-width: 1600px;
+                    margin: 0 auto;
+                }
+                .camera-feed {
+                    background: #444;
+                    padding: 10px;
+                    border-radius: 5px;
+                }
+                .camera-feed h3 {
+                    margin: 0 0 10px 0;
+                    color: #4CAF50;
+                }
                 img { width: 100%; height: auto; }
             </style>
         </head>
         <body>
-            <div class="camera-feed">
-                <h2>Camera Feed</h2>
-                <img src="/camera" />
+            <h1>Multi-Camera Feed</h1>
+            <div class="camera-grid">
+                <div class="camera-feed">
+                    <h3>Camera 0</h3>
+                    <img src="/camera0" />
+                </div>
+                <div class="camera-feed">
+                    <h3>Camera 1</h3>
+                    <img src="/camera1" />
+                </div>
+                <div class="camera-feed">
+                    <h3>Camera 2</h3>
+                    <img src="/camera2" />
+                </div>
+                <div class="camera-feed">
+                    <h3>Camera 3</h3>
+                    <img src="/camera3" />
+                </div>
             </div>
         </body>
     </html>
@@ -65,5 +111,6 @@ if __name__ == '__main__':
     try:
         app.run(host='0.0.0.0', port=8081, threaded=True)
     finally:
-        # Release camera resources when the application stops
-        camera.release()
+        # Release all camera resources when the application stops
+        for camera in cameras.values():
+            camera.release()
