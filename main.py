@@ -94,14 +94,6 @@ def index():
                     <h3>Camera 1</h3>
                     <img src="/camera1" />
                 </div>
-                <div class="camera-feed">
-                    <h3>Camera 2</h3>
-                    <img src="/camera2" />
-                </div>
-                <div class="camera-feed">
-                    <h3>Camera 3</h3>
-                    <img src="/camera3" />
-                </div>
             </div>
         </body>
     </html>
