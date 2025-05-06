@@ -62,7 +62,7 @@ def index():
     for camera_index in CAMERA_INDICES:
         camera_feed_html += f"""
                 <div class="camera-feed">
-                    <h3>Camera {camera_index}</h3>
+                    <h3>/camera{camera_index}</h3>
                     <img src="/camera{camera_index}" />
                 </div>
         """
