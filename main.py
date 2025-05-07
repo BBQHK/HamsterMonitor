@@ -12,6 +12,7 @@ from PIL import Image
 # Constants
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
+CAMERA_INDICES = [0, 2]  # List of camera indices to use
 FONT_SCALE = 0.5
 FONT_THICKNESS = 1
 FONT = cv2.FONT_HERSHEY_SIMPLEX
@@ -118,14 +119,17 @@ def process_frame(frame_bytes):
     
     return frame
 
-@app.route('/camera1')
-def camera1_feed():
-    """Stream video feed from camera 1 with sensor data overlay."""
+@app.route('/camera<int:camera_index>')
+def camera_feed(camera_index):
+    """Stream video feed from specified camera with activity detection overlay."""
+    if camera_index not in CAMERA_INDICES:
+        return "Invalid camera index", 400
+        
     def generate():
         while True:
             try:
                 # Get frame from start_cameras.py
-                response = requests.get('http://localhost:8081/camera0')
+                response = requests.get(f'http://localhost:8081/camera{camera_index}')
                 if response.status_code == 200:
                     # Process the frame
                     frame = process_frame(response.content)
@@ -159,13 +163,22 @@ def get_activity_pattern():
 
 @app.route('/')
 def index():
-    """Serve a simple HTML page with camera feed and configuration interface."""
-    return """
+    """Serve a simple HTML page with camera feeds and configuration interface."""
+    camera_feed_html = ""
+    for camera_index in CAMERA_INDICES:
+        camera_feed_html += f"""
+                    <div class="camera-feed">
+                        <h2>Camera {camera_index}</h2>
+                        <img src="/camera{camera_index}" id="camera{camera_index}" />
+                    </div>
+        """
+
+    return f"""
     <html>
         <head>
             <title>Hamster Monitor</title>
             <style>
-                :root {
+                :root {{
                     --primary-color: #4CAF50;
                     --background-dark: #333;
                     --background-light: #444;
@@ -174,42 +187,48 @@ def index():
                     --border-radius: 8px;
                     --box-shadow: 0 2px 4px rgba(0,0,0,0.2);
                     --spacing: 20px;
-                }
+                }}
 
-                body { 
+                body {{ 
                     margin: 0; 
                     padding: var(--spacing); 
                     background: var(--background-dark); 
                     color: var(--text-color);
                     font-family: Arial, sans-serif;
-                }
+                }}
 
-                .container { 
+                .container {{ 
                     max-width: 1200px; 
                     margin: 0 auto; 
-                }
+                }}
 
-                .main-content {
+                .main-content {{
                     display: flex;
                     gap: var(--spacing);
                     align-items: flex-start;
-                }
+                }}
 
-                .camera-feed { 
+                .camera-grid {{
                     flex: 2;
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+                    gap: var(--spacing);
+                }}
+
+                .camera-feed {{ 
                     background: var(--background-light);
                     padding: var(--spacing);
                     border-radius: var(--border-radius);
                     box-shadow: var(--box-shadow);
-                }
+                }}
 
-                .camera-feed h2 {
+                .camera-feed h2 {{
                     margin: 0 0 var(--spacing) 0;
                     color: var(--primary-color);
                     font-size: 1.5em;
-                }
+                }}
 
-                .activity-chart { 
+                .activity-chart {{ 
                     flex: 1;
                     padding: var(--spacing); 
                     background: var(--background-light); 
@@ -217,21 +236,21 @@ def index():
                     box-shadow: var(--box-shadow);
                     position: sticky;
                     top: var(--spacing);
-                }
+                }}
 
-                .activity-chart h3 { 
+                .activity-chart h3 {{ 
                     margin: 0 0 var(--spacing) 0;
                     color: var(--primary-color);
                     font-size: 1.2em;
-                }
+                }}
 
-                img { 
+                img {{ 
                     width: 100%; 
                     height: auto;
                     border-radius: var(--border-radius);
-                }
+                }}
 
-                .activity-bar { 
+                .activity-bar {{ 
                     height: 30px; 
                     margin: 8px 0; 
                     background: var(--background-dark); 
@@ -239,41 +258,40 @@ def index():
                     display: flex;
                     align-items: center;
                     padding: 0 10px;
-                }
+                }}
 
-                .activity-bar-fill { 
+                .activity-bar-fill {{ 
                     height: 20px; 
                     background: var(--primary-color); 
                     border-radius: var(--border-radius);
                     transition: width 0.3s ease;
-                }
+                }}
 
-                .activity-label {
+                .activity-label {{
                     margin-left: 10px;
                     font-size: 0.9em;
                     min-width: 150px;
-                }
+                }}
 
-                .activity-probability {
+                .activity-probability {{
                     margin-left: auto;
                     font-weight: bold;
                     color: var(--primary-color);
-                }
+                }}
 
-                .activity-timestamp {
+                .activity-timestamp {{
                     font-size: 0.8em;
                     color: var(--text-secondary);
                     margin-top: var(--spacing);
                     text-align: right;
-                }
+                }}
             </style>
         </head>
         <body>
             <div class="container">
                 <div class="main-content">
-                    <div class="camera-feed">
-                        <h2>Camera Feed</h2>
-                        <img src="/camera1" id="camera1" />
+                    <div class="camera-grid">
+                        {camera_feed_html}
                     </div>
                     <div class="activity-chart">
                         <h3>Activity Analysis</h3>
@@ -283,10 +301,10 @@ def index():
             </div>
             <script>
                 // Update activity chart
-                function updateActivityChart() {
+                function updateActivityChart() {{
                     fetch('/activity_pattern')
                         .then(response => response.json())
-                        .then(data => {
+                        .then(data => {{
                             const container = document.getElementById('activity-bars');
                             container.innerHTML = '';
                             
@@ -294,13 +312,13 @@ def index():
                             const sortedActivities = Object.entries(data)
                                 .sort((a, b) => b[1] - a[1]);
                             
-                            for (const [activity, probability] of sortedActivities) {
+                            for (const [activity, probability] of sortedActivities) {{
                                 const bar = document.createElement('div');
                                 bar.className = 'activity-bar';
                                 
                                 const fill = document.createElement('div');
                                 fill.className = 'activity-bar-fill';
-                                fill.style.width = `${probability * 100}%`;
+                                fill.style.width = `${{probability * 100}}%`;
                                 
                                 const label = document.createElement('span');
                                 label.className = 'activity-label';
@@ -308,21 +326,21 @@ def index():
                                 
                                 const prob = document.createElement('span');
                                 prob.className = 'activity-probability';
-                                prob.textContent = `${(probability * 100).toFixed(1)}%`;
+                                prob.textContent = `${{(probability * 100).toFixed(1)}}%`;
                                 
                                 bar.appendChild(fill);
                                 bar.appendChild(label);
                                 bar.appendChild(prob);
                                 container.appendChild(bar);
-                            }
+                            }}
                             
                             // Add timestamp
                             const timestamp = document.createElement('div');
                             timestamp.className = 'activity-timestamp';
-                            timestamp.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
+                            timestamp.textContent = `Last updated: ${{new Date().toLocaleTimeString()}}`;
                             container.appendChild(timestamp);
-                        });
-                }
+                        }});
+                }}
                 
                 // Update activity chart every 2 seconds
                 setInterval(updateActivityChart, 2000);
