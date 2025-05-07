@@ -34,6 +34,9 @@ last_activity_result = {
     'activity_probability': 0.0
 }
 
+# Global server status
+server_down = False
+
 def get_current_timestamp():
     """Get current timestamp in formatted string."""
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -120,12 +123,12 @@ def get_camera(camera_index):
 
 def generate_frames(camera_index):
     """Generate video frames from specified camera."""
+    global server_down
     camera = get_camera(camera_index)
     if camera is None:
         return
     
     frame_count = 0
-    server_down = False
     
     while True:
         success, frame = camera.read()
