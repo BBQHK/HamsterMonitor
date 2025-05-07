@@ -129,7 +129,7 @@ def camera_feed(camera_index):
         while True:
             try:
                 # Get frame from start_cameras.py
-                response = requests.get(f'http://localhost:8081/camera{camera_index}')
+                response = requests.get(f'http://192.168.50.167:8081/camera{camera_index}')
                 if response.status_code == 200:
                     # Process the frame
                     frame = process_frame(response.content)
