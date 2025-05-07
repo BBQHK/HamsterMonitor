@@ -11,7 +11,7 @@ FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 FPS = 30
 MAIN_API_URL = "http://192.168.50.168:8081/process_frame"  # URL of main.py API
-FRAME_SKIP = 5  # Process every 5th frame
+FRAME_SKIP = 3  # Process every 3rd frame
 
 # Text overlay constants
 FONT_SCALE = 0.5
