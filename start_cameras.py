@@ -27,6 +27,16 @@ app = Flask(__name__)
 # Dictionary to store camera objects
 cameras = {}
 
+def get_current_timestamp():
+    """Get current timestamp in formatted string."""
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+def get_simulated_readings():
+    """Generate simulated temperature and humidity readings."""
+    temperature = 22.5
+    humidity = 40.2
+    return temperature, humidity
+
 def add_text_overlay(frame, texts):
     """Add text overlay to a frame.
     
@@ -113,6 +123,10 @@ def generate_frames(camera_index):
             break
 
         try:
+            # Get local readings
+            current_time = get_current_timestamp()
+            temperature, humidity = get_simulated_readings()
+            
             # Encode frame as JPEG
             _, buffer = cv2.imencode('.jpg', frame)
             frame_bytes = buffer.tobytes()
@@ -122,10 +136,10 @@ def generate_frames(camera_index):
             if response.status_code == 200:
                 result = response.json()
                 
-                # Prepare text overlay
+                # Prepare text overlay with all information
                 texts = [
-                    f"Time: {result['timestamp']}",
-                    f"Temp: {result['temperature']:.1f}C  Hum: {result['humidity']:.1f}%",
+                    f"Time: {current_time}",
+                    f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%",
                     f"Activity: {result['activity']} ({result['activity_probability']*100:.1f}%)"
                 ]
                 
