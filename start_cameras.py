@@ -34,9 +34,6 @@ last_activity_result = {
     'activity_probability': 0.0
 }
 
-# Global server status
-server_down = False
-
 def get_current_timestamp():
     """Get current timestamp in formatted string."""
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -123,7 +120,6 @@ def get_camera(camera_index):
 
 def generate_frames(camera_index):
     """Generate video frames from specified camera."""
-    global server_down
     camera = get_camera(camera_index)
     if camera is None:
         return
@@ -144,30 +140,22 @@ def generate_frames(camera_index):
             if camera_index == 0:
                 # Process frame only every FRAME_SKIP frames
                 if frame_count % FRAME_SKIP == 0:
-                    try:
-                        # Encode frame as JPEG
-                        _, buffer = cv2.imencode('.jpg', frame)
-                        frame_bytes = buffer.tobytes()
-                        
-                        # Send frame to main.py for processing
-                        response = requests.post(MAIN_API_URL, data=frame_bytes)
-                        if response.status_code == 200:
-                            # Update the shared activity result
-                            last_activity_result.update(response.json())
-                            server_down = False
-                    except requests.exceptions.RequestException:
-                        server_down = True
+                    # Encode frame as JPEG
+                    _, buffer = cv2.imencode('.jpg', frame)
+                    frame_bytes = buffer.tobytes()
+                    
+                    # Send frame to main.py for processing
+                    response = requests.post(MAIN_API_URL, data=frame_bytes)
+                    if response.status_code == 200:
+                        # Update the shared activity result
+                        last_activity_result.update(response.json())
             
             # Use the shared activity result for overlay
             texts = [
                 f"Time: {current_time}",
-                f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%"
+                f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%",
+                f"Activity: {last_activity_result['activity']} ({last_activity_result['activity_probability']*100:.1f}%)"
             ]
-            
-            if server_down:
-                texts.append("Activity: Server Down")
-            else:
-                texts.append(f"Activity: {last_activity_result['activity']} ({last_activity_result['activity_probability']*100:.1f}%)")
             
             # Add text overlay to frame
             add_text_overlay(frame, texts)
