@@ -1,6 +1,7 @@
 from flask import Flask, Response
 import cv2
-import requests
+import aiohttp
+import asyncio
 import json
 import numpy as np
 from datetime import datetime
@@ -33,6 +34,29 @@ last_activity_result = {
     'activity': 'Unknown',
     'activity_probability': 0.0
 }
+
+# Create aiohttp session
+session = None
+
+async def init_session():
+    """Initialize aiohttp session."""
+    global session
+    session = aiohttp.ClientSession()
+
+async def close_session():
+    """Close aiohttp session."""
+    if session:
+        await session.close()
+
+async def process_frame_async(frame_bytes):
+    """Process frame asynchronously."""
+    try:
+        async with session.post(MAIN_API_URL, data=frame_bytes) as response:
+            if response.status == 200:
+                result = await response.json()
+                last_activity_result.update(result)
+    except Exception as e:
+        print(f"Error in async processing: {e}")
 
 def get_current_timestamp():
     """Get current timestamp in formatted string."""
@@ -144,11 +168,11 @@ def generate_frames(camera_index):
                     _, buffer = cv2.imencode('.jpg', frame)
                     frame_bytes = buffer.tobytes()
                     
-                    # Send frame to main.py for processing
-                    response = requests.post(MAIN_API_URL, data=frame_bytes)
-                    if response.status_code == 200:
-                        # Update the shared activity result
-                        last_activity_result.update(response.json())
+                    # Create and run async task for API call
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(process_frame_async(frame_bytes))
+                    loop.close()
             
             # Use the shared activity result for overlay
             texts = [
@@ -231,8 +255,16 @@ if __name__ == '__main__':
     try:
         # Initialize all cameras before starting the server
         initialize_cameras()
+        
+        # Initialize async session
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(init_session())
+        
         app.run(host='0.0.0.0', port=8081, threaded=True)
     finally:
         # Release all camera resources when the application stops
         for camera in cameras.values():
             camera.release()
+        # Close async session
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(close_session())
