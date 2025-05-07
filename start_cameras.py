@@ -125,6 +125,7 @@ def generate_frames(camera_index):
         return
     
     frame_count = 0
+    server_down = False
     
     while True:
         success, frame = camera.read()
@@ -140,22 +141,30 @@ def generate_frames(camera_index):
             if camera_index == 0:
                 # Process frame only every FRAME_SKIP frames
                 if frame_count % FRAME_SKIP == 0:
-                    # Encode frame as JPEG
-                    _, buffer = cv2.imencode('.jpg', frame)
-                    frame_bytes = buffer.tobytes()
-                    
-                    # Send frame to main.py for processing
-                    response = requests.post(MAIN_API_URL, data=frame_bytes)
-                    if response.status_code == 200:
-                        # Update the shared activity result
-                        last_activity_result.update(response.json())
+                    try:
+                        # Encode frame as JPEG
+                        _, buffer = cv2.imencode('.jpg', frame)
+                        frame_bytes = buffer.tobytes()
+                        
+                        # Send frame to main.py for processing
+                        response = requests.post(MAIN_API_URL, data=frame_bytes)
+                        if response.status_code == 200:
+                            # Update the shared activity result
+                            last_activity_result.update(response.json())
+                            server_down = False
+                    except requests.exceptions.RequestException:
+                        server_down = True
             
             # Use the shared activity result for overlay
             texts = [
                 f"Time: {current_time}",
-                f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%",
-                f"Activity: {last_activity_result['activity']} ({last_activity_result['activity_probability']*100:.1f}%)"
+                f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%"
             ]
+            
+            if server_down:
+                texts.append("Activity: Server Down")
+            else:
+                texts.append(f"Activity: {last_activity_result['activity']} ({last_activity_result['activity_probability']*100:.1f}%)")
             
             # Add text overlay to frame
             add_text_overlay(frame, texts)
