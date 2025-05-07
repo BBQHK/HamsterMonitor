@@ -161,6 +161,42 @@ def get_activity_pattern():
     pattern = {k: float(v) for k, v in pattern.items()}
     return jsonify(pattern)
 
+@app.route('/process_frame', methods=['POST'])
+def process_frame_api():
+    """API endpoint to process a frame and return activity results."""
+    try:
+        # Get frame data from request
+        frame_bytes = request.get_data()
+        
+        # Convert bytes to numpy array
+        nparr = np.frombuffer(frame_bytes, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        if frame is None:
+            return jsonify({"error": "Failed to process frame"}), 400
+
+        # Get sensor readings and detect activity
+        temperature, humidity = get_simulated_readings()
+        current_time = get_current_timestamp()
+        
+        # Use AI to detect activity
+        activity, activity_probs = activity_detector.detect_activity(frame)
+        
+        # Prepare response
+        response = {
+            "timestamp": current_time,
+            "temperature": temperature,
+            "humidity": humidity,
+            "activity": activity,
+            "activity_probability": float(activity_probs[activity]),
+            "all_probabilities": {k: float(v) for k, v in activity_probs.items()}
+        }
+        
+        return jsonify(response)
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/')
 def index():
     """Serve a simple HTML page with camera feeds and configuration interface."""
@@ -353,4 +389,4 @@ def index():
     """
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8082, threaded=True)
+    app.run(host='0.0.0.0', port=8081, threaded=True)

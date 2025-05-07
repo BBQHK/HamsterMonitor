@@ -1,17 +1,83 @@
 from flask import Flask, Response
 import cv2
+import requests
+import json
+import numpy as np
+from datetime import datetime
 
 # Constants
 CAMERA_INDICES = [0, 2]  # List of camera indices to use
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 FPS = 30
+MAIN_API_URL = "http://192.168.50.168:8081/process_frame"  # URL of main.py API
+
+# Text overlay constants
+FONT_SCALE = 0.5
+FONT_THICKNESS = 1
+FONT = cv2.FONT_HERSHEY_SIMPLEX
+BACKGROUND_ALPHA = 0.5
+TEXT_COLOR = (255, 255, 255)  # White
+BACKGROUND_COLOR = (0, 0, 0)  # Black
+TEXT_PADDING = 5
 
 # Initialize Flask app
 app = Flask(__name__)
 
 # Dictionary to store camera objects
 cameras = {}
+
+def add_text_overlay(frame, texts):
+    """Add text overlay to a frame.
+    
+    Args:
+        frame: The frame to add text overlay to
+        texts: Array of text strings to display
+    """
+    if not texts:
+        return
+        
+    # Calculate total height needed and max width
+    total_height = 0
+    max_width = 0
+    text_sizes = []
+    
+    for text in texts:
+        (width, height), _ = cv2.getTextSize(text, FONT, FONT_SCALE, FONT_THICKNESS)
+        text_sizes.append((width, height))
+        max_width = max(max_width, width)
+        total_height += height
+    
+    # Add padding between texts and around the box
+    padding = TEXT_PADDING
+    total_height += padding * (len(texts) + 1)  # Padding between texts and around the box
+    max_width += padding * 2  # Padding on both sides
+    
+    # Add semi-transparent background
+    overlay = frame.copy()
+    cv2.rectangle(
+        overlay,
+        (padding, padding),
+        (padding + max_width, padding + total_height),
+        BACKGROUND_COLOR,
+        -1
+    )
+    cv2.addWeighted(overlay, BACKGROUND_ALPHA, frame, 1 - BACKGROUND_ALPHA, 0, frame)
+    
+    # Add text
+    y = padding + text_sizes[0][1] + padding
+    for i, text in enumerate(texts):
+        cv2.putText(
+            frame, 
+            text, 
+            (padding + 5, y), 
+            FONT, 
+            FONT_SCALE, 
+            TEXT_COLOR, 
+            FONT_THICKNESS
+        )
+        if i < len(texts) - 1:
+            y += text_sizes[i + 1][1] + padding
 
 def setup_camera(camera_index):
     """Setup a camera with specified index."""
@@ -46,7 +112,33 @@ def generate_frames(camera_index):
         if not success:
             break
 
-        # Encode frame as JPEG for MJPEG streaming
+        try:
+            # Encode frame as JPEG
+            _, buffer = cv2.imencode('.jpg', frame)
+            frame_bytes = buffer.tobytes()
+            
+            # Send frame to main.py for processing
+            response = requests.post(MAIN_API_URL, data=frame_bytes)
+            if response.status_code == 200:
+                result = response.json()
+                
+                # Prepare text overlay
+                texts = [
+                    f"Time: {result['timestamp']}",
+                    f"Temp: {result['temperature']:.1f}C  Hum: {result['humidity']:.1f}%",
+                    f"Activity: {result['activity']} ({result['activity_probability']*100:.1f}%)"
+                ]
+                
+                # Add text overlay to frame
+                add_text_overlay(frame, texts)
+            
+        except Exception as e:
+            print(f"Error processing frame: {e}")
+            # Add error message to frame
+            cv2.putText(frame, f"Error: {str(e)}", (50, FRAME_HEIGHT//2), 
+                       FONT, FONT_SCALE, TEXT_COLOR, FONT_THICKNESS)
+
+        # Encode processed frame as JPEG for MJPEG streaming
         ret, buffer = cv2.imencode('.jpg', frame)
         frame = buffer.tobytes()
         yield (b'--frame\r\n'
