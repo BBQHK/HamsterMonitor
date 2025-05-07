@@ -28,8 +28,11 @@ app = Flask(__name__)
 # Dictionary to store camera objects
 cameras = {}
 
-# Dictionary to store last activity results for each camera
-last_activity_results = {}
+# Store last activity result (shared across all cameras)
+last_activity_result = {
+    'activity': 'Unknown',
+    'activity_probability': 0.0
+}
 
 def get_current_timestamp():
     """Get current timestamp in formatted string."""
@@ -144,28 +147,15 @@ def generate_frames(camera_index):
                     # Send frame to main.py for processing
                     response = requests.post(MAIN_API_URL, data=frame_bytes)
                     if response.status_code == 200:
-                        result = response.json()
-                        # Store the result for this camera
-                        last_activity_results[camera_index] = result
-                
-                # Use the last known activity result for overlay
-                result = last_activity_results.get(camera_index, {
-                    'activity': 'Unknown',
-                    'activity_probability': 0.0
-                })
-                
-                # Prepare text overlay with all information
-                texts = [
-                    f"Time: {current_time}",
-                    f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%",
-                    f"Activity: {result['activity']} ({result['activity_probability']*100:.1f}%)"
-                ]
-            else:
-                # For other cameras, only show timestamp and sensor readings
-                texts = [
-                    f"Time: {current_time}",
-                    f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%"
-                ]
+                        # Update the shared activity result
+                        last_activity_result.update(response.json())
+            
+            # Use the shared activity result for overlay
+            texts = [
+                f"Time: {current_time}",
+                f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%",
+                f"Activity: {last_activity_result['activity']} ({last_activity_result['activity_probability']*100:.1f}%)"
+            ]
             
             # Add text overlay to frame
             add_text_overlay(frame, texts)
