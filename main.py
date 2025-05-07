@@ -9,18 +9,6 @@ import requests
 from io import BytesIO
 from PIL import Image
 
-# Constants
-FRAME_WIDTH = 640
-FRAME_HEIGHT = 480
-CAMERA_INDICES = [0, 2]  # List of camera indices to use
-FONT_SCALE = 0.5
-FONT_THICKNESS = 1
-FONT = cv2.FONT_HERSHEY_SIMPLEX
-BACKGROUND_ALPHA = 0.5
-TEXT_COLOR = (255, 255, 255)  # White
-BACKGROUND_COLOR = (0, 0, 0)  # Black
-TEXT_PADDING = 5
-
 # Initialize Flask app
 app = Flask(__name__)
 
