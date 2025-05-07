@@ -11,6 +11,7 @@ FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 FPS = 30
 MAIN_API_URL = "http://192.168.50.168:8081/process_frame"  # URL of main.py API
+FRAME_SKIP = 3  # Process every 3rd frame
 
 # Text overlay constants
 FONT_SCALE = 0.5
@@ -26,6 +27,9 @@ app = Flask(__name__)
 
 # Dictionary to store camera objects
 cameras = {}
+
+# Dictionary to store last activity results for each camera
+last_activity_results = {}
 
 def get_current_timestamp():
     """Get current timestamp in formatted string."""
@@ -117,6 +121,8 @@ def generate_frames(camera_index):
     if camera is None:
         return
     
+    frame_count = 0
+    
     while True:
         success, frame = camera.read()
         if not success:
@@ -127,24 +133,36 @@ def generate_frames(camera_index):
             current_time = get_current_timestamp()
             temperature, humidity = get_simulated_readings()
             
-            # Encode frame as JPEG
-            _, buffer = cv2.imencode('.jpg', frame)
-            frame_bytes = buffer.tobytes()
+            # Process frame only every FRAME_SKIP frames
+            if frame_count % FRAME_SKIP == 0:
+                # Encode frame as JPEG
+                _, buffer = cv2.imencode('.jpg', frame)
+                frame_bytes = buffer.tobytes()
+                
+                # Send frame to main.py for processing
+                response = requests.post(MAIN_API_URL, data=frame_bytes)
+                if response.status_code == 200:
+                    result = response.json()
+                    # Store the result for this camera
+                    last_activity_results[camera_index] = result
             
-            # Send frame to main.py for processing
-            response = requests.post(MAIN_API_URL, data=frame_bytes)
-            if response.status_code == 200:
-                result = response.json()
-                
-                # Prepare text overlay with all information
-                texts = [
-                    f"Time: {current_time}",
-                    f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%",
-                    f"Activity: {result['activity']} ({result['activity_probability']*100:.1f}%)"
-                ]
-                
-                # Add text overlay to frame
-                add_text_overlay(frame, texts)
+            # Use the last known activity result for overlay
+            result = last_activity_results.get(camera_index, {
+                'activity': 'Unknown',
+                'activity_probability': 0.0
+            })
+            
+            # Prepare text overlay with all information
+            texts = [
+                f"Time: {current_time}",
+                f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%",
+                f"Activity: {result['activity']} ({result['activity_probability']*100:.1f}%)"
+            ]
+            
+            # Add text overlay to frame
+            add_text_overlay(frame, texts)
+            
+            frame_count += 1
             
         except Exception as e:
             print(f"Error processing frame: {e}")
