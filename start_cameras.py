@@ -133,31 +133,39 @@ def generate_frames(camera_index):
             current_time = get_current_timestamp()
             temperature, humidity = get_simulated_readings()
             
-            # Process frame only every FRAME_SKIP frames
-            if frame_count % FRAME_SKIP == 0:
-                # Encode frame as JPEG
-                _, buffer = cv2.imencode('.jpg', frame)
-                frame_bytes = buffer.tobytes()
+            # Only process frames from camera0
+            if camera_index == 0:
+                # Process frame only every FRAME_SKIP frames
+                if frame_count % FRAME_SKIP == 0:
+                    # Encode frame as JPEG
+                    _, buffer = cv2.imencode('.jpg', frame)
+                    frame_bytes = buffer.tobytes()
+                    
+                    # Send frame to main.py for processing
+                    response = requests.post(MAIN_API_URL, data=frame_bytes)
+                    if response.status_code == 200:
+                        result = response.json()
+                        # Store the result for this camera
+                        last_activity_results[camera_index] = result
                 
-                # Send frame to main.py for processing
-                response = requests.post(MAIN_API_URL, data=frame_bytes)
-                if response.status_code == 200:
-                    result = response.json()
-                    # Store the result for this camera
-                    last_activity_results[camera_index] = result
-            
-            # Use the last known activity result for overlay
-            result = last_activity_results.get(camera_index, {
-                'activity': 'Unknown',
-                'activity_probability': 0.0
-            })
-            
-            # Prepare text overlay with all information
-            texts = [
-                f"Time: {current_time}",
-                f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%",
-                f"Activity: {result['activity']} ({result['activity_probability']*100:.1f}%)"
-            ]
+                # Use the last known activity result for overlay
+                result = last_activity_results.get(camera_index, {
+                    'activity': 'Unknown',
+                    'activity_probability': 0.0
+                })
+                
+                # Prepare text overlay with all information
+                texts = [
+                    f"Time: {current_time}",
+                    f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%",
+                    f"Activity: {result['activity']} ({result['activity_probability']*100:.1f}%)"
+                ]
+            else:
+                # For other cameras, only show timestamp and sensor readings
+                texts = [
+                    f"Time: {current_time}",
+                    f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%"
+                ]
             
             # Add text overlay to frame
             add_text_overlay(frame, texts)
