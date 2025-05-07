@@ -1,19 +1,17 @@
 from flask import Flask, Response, request, jsonify
 import cv2
-import random
-import time
 import numpy as np
 from datetime import datetime
 import json
 import os
 from ai_activity_detector import HamsterActivityDetector
+import requests
+from io import BytesIO
+from PIL import Image
 
 # Constants
-CAMERA_INDEX_1 = 0  # First camera
-# CAMERA_INDEX_2 = 1  # Second camera
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
-FPS = 15
 FONT_SCALE = 0.5
 FONT_THICKNESS = 1
 FONT = cv2.FONT_HERSHEY_SIMPLEX
@@ -27,58 +25,6 @@ app = Flask(__name__)
 
 # Initialize AI activity detector
 activity_detector = HamsterActivityDetector("best.pt")
-
-def list_available_cameras():
-    """List all available cameras on the system."""
-    available_cameras = []
-    for i in range(10):  # Check first 10 indices
-        cap = cv2.VideoCapture(i)
-        if cap.isOpened():
-            available_cameras.append(i)
-            cap.release()
-    return available_cameras
-
-def setup_camera(camera_index):
-    """Setup camera with proper configuration for Windows."""
-    # Try to open the camera
-    camera = cv2.VideoCapture(camera_index, cv2.CAP_DSHOW)  # Use DirectShow for Windows
-    
-    if not camera.isOpened():
-        # Try without DirectShow if it fails
-        camera = cv2.VideoCapture(camera_index)
-        if not camera.isOpened():
-            raise RuntimeError(f"Failed to open camera with index {camera_index}")
-    
-    # Set camera properties
-    camera.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
-    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
-    camera.set(cv2.CAP_PROP_FPS, FPS)
-    
-    return camera
-
-# Initialize cameras
-try:
-    available_cameras = list_available_cameras()
-    print(f"Available cameras: {available_cameras}")
-    
-    if not available_cameras:
-        raise RuntimeError("No cameras found!")
-    
-    camera1 = setup_camera(available_cameras[0])
-    print(f"Successfully initialized camera {available_cameras[0]}")
-    
-    # Uncomment if you want to use a second camera
-    # if len(available_cameras) > 1:
-    #     camera2 = setup_camera(available_cameras[1])
-    #     print(f"Successfully initialized camera {available_cameras[1]}")
-    # else:
-    #     camera2 = None
-    #     print("No second camera found")
-    
-except Exception as e:
-    print(f"Error initializing cameras: {e}")
-    camera1 = None
-    # camera2 = None
 
 def get_simulated_readings():
     """Generate simulated temperature and humidity readings."""
@@ -142,55 +88,66 @@ def add_text_overlay(frame, texts):
         if i < len(texts) - 1:
             y += text_sizes[i + 1][1] + padding
 
-def generate_camera_frames(camera, show_config=False):
-    """Generate video frames from a camera with sensor data overlay."""
-    if camera is None:
+def process_frame(frame_bytes):
+    """Process a frame from the camera feed with activity detection."""
+    # Convert bytes to numpy array
+    nparr = np.frombuffer(frame_bytes, np.uint8)
+    frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    
+    if frame is None:
         # Generate a black frame with error message
         frame = np.zeros((FRAME_HEIGHT, FRAME_WIDTH, 3), dtype=np.uint8)
-        cv2.putText(frame, "Camera not available", (50, FRAME_HEIGHT//2), 
+        cv2.putText(frame, "Failed to process frame", (50, FRAME_HEIGHT//2), 
                    FONT, FONT_SCALE, TEXT_COLOR, FONT_THICKNESS)
-        ret, buffer = cv2.imencode('.jpg', frame)
-        frame = buffer.tobytes()
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-        return
+        return frame
 
-    while True:
-        success, frame = camera.read()
-        if not success:
-            print("Failed to read frame from camera")
-            break
-
-        # Get sensor readings and detect activity
-        temperature, humidity = get_simulated_readings()
-        current_time = get_current_timestamp()
-        
-        # Use AI to detect activity
-        activity, activity_probs = activity_detector.detect_activity(frame)
-        
-        # Prepare text for overlay
-        texts = [f"Time: {current_time}"]
-        texts.append(f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%")
-        texts.append(f"Activity: {activity} ({activity_probs[activity]*100:.1f}%)")
-        
-        # Add text overlay
-        add_text_overlay(frame, texts)
-
-        # Encode frame as JPEG for MJPEG streaming
-        ret, buffer = cv2.imencode('.jpg', frame)
-        frame = buffer.tobytes()
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+    # Get sensor readings and detect activity
+    temperature, humidity = get_simulated_readings()
+    current_time = get_current_timestamp()
+    
+    # Use AI to detect activity
+    activity, activity_probs = activity_detector.detect_activity(frame)
+    
+    # Prepare text for overlay
+    texts = [f"Time: {current_time}"]
+    texts.append(f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%")
+    texts.append(f"Activity: {activity} ({activity_probs[activity]*100:.1f}%)")
+    
+    # Add text overlay
+    add_text_overlay(frame, texts)
+    
+    return frame
 
 @app.route('/camera1')
 def camera1_feed():
     """Stream video feed from camera 1 with sensor data overlay."""
-    return Response(generate_camera_frames(camera1), mimetype='multipart/x-mixed-replace; boundary=frame')
-
-# @app.route('/camera2')
-# def camera2_feed():
-#     """Stream video feed from camera 2 with sensor data overlay."""
-#     return Response(generate_camera_frames(camera2), mimetype='multipart/x-mixed-replace; boundary=frame')
+    def generate():
+        while True:
+            try:
+                # Get frame from start_cameras.py
+                response = requests.get('http://localhost:8081/camera0')
+                if response.status_code == 200:
+                    # Process the frame
+                    frame = process_frame(response.content)
+                    
+                    # Encode frame as JPEG for MJPEG streaming
+                    ret, buffer = cv2.imencode('.jpg', frame)
+                    frame_bytes = buffer.tobytes()
+                    
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+            except Exception as e:
+                print(f"Error processing frame: {e}")
+                # Generate error frame
+                frame = np.zeros((FRAME_HEIGHT, FRAME_WIDTH, 3), dtype=np.uint8)
+                cv2.putText(frame, f"Error: {str(e)}", (50, FRAME_HEIGHT//2), 
+                           FONT, FONT_SCALE, TEXT_COLOR, FONT_THICKNESS)
+                ret, buffer = cv2.imencode('.jpg', frame)
+                frame_bytes = buffer.tobytes()
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+    
+    return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/activity_pattern')
 def get_activity_pattern():
@@ -378,11 +335,4 @@ def index():
     """
 
 if __name__ == '__main__':
-    try:
-        app.run(host='0.0.0.0', port=8081, threaded=True)
-    finally:
-        # Release camera resources when the application stops
-        if camera1:
-            camera1.release()
-        # if camera2:
-        #     camera2.release()
+    app.run(host='0.0.0.0', port=8082, threaded=True)
