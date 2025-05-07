@@ -9,3 +9,17 @@ yolo predict model=runs\detect\train\weights\best.pt source=/path/to/test/images
 
 Export Model (optional): For edge devices (e.g., Raspberry Pi), export to ONNX or TensorRT
 yolo export model=runs/train/exp/weights/best.pt format=onnx
+
+
+Setup Service:
+# Copy the service file to systemd directory
+sudo cp hamster_cam.service /etc/systemd/system/
+
+# Reload systemd to recognize the new service
+sudo systemctl daemon-reload
+
+# Enable the service to start on boot
+sudo systemctl enable hamster_cam
+
+# Start the service
+sudo systemctl start hamster_cam

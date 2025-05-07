@@ -21,15 +21,19 @@ def setup_camera(camera_index):
     camera.set(cv2.CAP_PROP_FPS, FPS)
     return camera
 
-def get_camera(camera_index):
-    """Get or create a camera object for the given index."""
-    if camera_index not in cameras:
+def initialize_cameras():
+    """Initialize all cameras at startup."""
+    for camera_index in CAMERA_INDICES:
         camera = setup_camera(camera_index)
         if camera.isOpened():
             cameras[camera_index] = camera
+            print(f"Successfully initialized camera {camera_index}")
         else:
-            return None
-    return cameras[camera_index]
+            print(f"Failed to initialize camera {camera_index}")
+
+def get_camera(camera_index):
+    """Get a camera object for the given index."""
+    return cameras.get(camera_index)
 
 def generate_frames(camera_index):
     """Generate video frames from specified camera."""
@@ -103,6 +107,8 @@ def index():
 
 if __name__ == '__main__':
     try:
+        # Initialize all cameras before starting the server
+        initialize_cameras()
         app.run(host='0.0.0.0', port=8081, threaded=True)
     finally:
         # Release all camera resources when the application stops

@@ -1,0 +1,13 @@
+[Unit]
+Description=Hamster Cam MJPEG Stream
+After=network.target
+
+[Service]
+User=king
+WorkingDirectory=/home/king/Desktop/HamsterMonitor
+Environment=PATH=/home/king/Desktop/HamsterMonitor/venv/bin:$PATH
+ExecStart=/home/king/Desktop/HamsterMonitor/venv/bin/python /home/king/Desktop/HamsterMonitor/start_cameras.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
