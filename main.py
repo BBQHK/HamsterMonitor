@@ -45,7 +45,6 @@ def process_frame_api():
             "activity_probability": activity_probability,
             "all_probabilities": {k: float(v) for k, v in activity_probs.items()}
         }
-        print(response)
         
         return jsonify(response)
         
