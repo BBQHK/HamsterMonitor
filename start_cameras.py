@@ -153,9 +153,14 @@ def generate_frames(camera_index):
             # Use the shared activity result for overlay
             texts = [
                 f"Time: {current_time}",
-                f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%",
-                f"Activity: {last_activity_result['activity']} ({last_activity_result['activity_probability']*100:.1f}%)"
+                f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%"
             ]
+            
+            # Show activity with probability only if it's not Unknown
+            if last_activity_result['activity'] == "Unknown":
+                texts.append("Activity: Unknown")
+            else:
+                texts.append(f"Activity: {last_activity_result['activity']} ({last_activity_result['activity_probability']*100:.1f}%)")
             
             # Add text overlay to frame
             add_text_overlay(frame, texts)

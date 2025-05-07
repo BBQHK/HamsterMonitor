@@ -32,12 +32,20 @@ def process_frame_api():
         # Use AI to detect activity
         activity, activity_probs = activity_detector.detect_activity(frame)
         
+        # Check if all probabilities are 0.0
+        if all(prob == 0.0 for prob in activity_probs.values()):
+            activity = "Unknown"
+            activity_probability = 0.0
+        else:
+            activity_probability = float(activity_probs[activity])
+            
         # Prepare response with only activity information
         response = {
             "activity": activity,
-            "activity_probability": float(activity_probs[activity]),
+            "activity_probability": activity_probability,
             "all_probabilities": {k: float(v) for k, v in activity_probs.items()}
         }
+        print(response)
         
         return jsonify(response)
         
