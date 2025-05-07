@@ -137,7 +137,7 @@ def generate_frames(camera_index):
             temperature, humidity = get_simulated_readings()
             
             # Only process frames from camera0
-            if camera_index == 0:
+            if camera_index == 2:
                 # Process frame only every FRAME_SKIP frames
                 if frame_count % FRAME_SKIP == 0:
                     # Encode frame as JPEG
