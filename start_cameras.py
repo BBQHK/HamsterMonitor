@@ -62,18 +62,32 @@ def read_dht11():
     
     # Only read sensor if enough time has passed
     if current_time - last_sensor_readings['last_read_time'] >= SENSOR_READ_INTERVAL:
-        try:
-            temperature = dht_device.temperature
-            humidity = dht_device.humidity
-            if humidity is not None and temperature is not None:
-                print(f"Temperature: {temperature}C, Humidity: {humidity}%")
-                last_sensor_readings.update({
-                    'temperature': temperature,
-                    'humidity': humidity,
-                    'last_read_time': current_time
-                })
-        except Exception as e:
-            print(f"Error reading DHT11: {e}")
+        max_retries = 3
+        retry_delay = 0.5  # seconds
+        
+        for attempt in range(max_retries):
+            try:
+                # Add a small delay before reading
+                time.sleep(0.1)
+                temperature = dht_device.temperature
+                humidity = dht_device.humidity
+                
+                if humidity is not None and temperature is not None:
+                    print(f"Temperature: {temperature}C, Humidity: {humidity}%")
+                    last_sensor_readings.update({
+                        'temperature': temperature,
+                        'humidity': humidity,
+                        'last_read_time': current_time
+                    })
+                    break  # Success, exit retry loop
+                else:
+                    print(f"Attempt {attempt + 1}: Invalid readings, retrying...")
+                    time.sleep(retry_delay)
+                    
+            except Exception as e:
+                print(f"Attempt {attempt + 1}: Error reading DHT11: {e}")
+                if attempt < max_retries - 1:  # Don't sleep on the last attempt
+                    time.sleep(retry_delay)
     
     return last_sensor_readings['temperature'], last_sensor_readings['humidity']
 
