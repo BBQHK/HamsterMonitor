@@ -4,6 +4,8 @@ import requests
 import json
 import numpy as np
 from datetime import datetime
+import Adafruit_DHT
+import time
 
 # Constants
 CAMERA_INDICES = [0, 2]  # List of camera indices to use
@@ -12,6 +14,11 @@ FRAME_HEIGHT = 480
 FPS = 30
 MAIN_API_URL = "http://192.168.50.168:8081/process_frame"  # URL of main.py API
 FRAME_SKIP = 3  # Process every 3rd frame
+
+# DHT11 settings
+DHT_SENSOR = Adafruit_DHT.DHT11
+DHT_PIN = 4  # GPIO pin number where DHT11 is connected
+SENSOR_READ_INTERVAL = 2  # Read sensor every 2 seconds
 
 # Text overlay constants
 FONT_SCALE = 0.5
@@ -34,15 +41,36 @@ last_activity_result = {
     'activity_probability': 0.0
 }
 
+# Store last sensor readings
+last_sensor_readings = {
+    'temperature': 0.0,
+    'humidity': 0.0,
+    'last_read_time': 0
+}
+
 def get_current_timestamp():
     """Get current timestamp in formatted string."""
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-def get_simulated_readings():
-    """Generate simulated temperature and humidity readings."""
-    temperature = 22.5
-    humidity = 40.2
-    return temperature, humidity
+def read_dht11():
+    """Read temperature and humidity from DHT11 sensor."""
+    global last_sensor_readings
+    current_time = time.time()
+    
+    # Only read sensor if enough time has passed
+    if current_time - last_sensor_readings['last_read_time'] >= SENSOR_READ_INTERVAL:
+        try:
+            humidity, temperature = Adafruit_DHT.read_retry(DHT_SENSOR, DHT_PIN)
+            if humidity is not None and temperature is not None:
+                last_sensor_readings.update({
+                    'temperature': temperature,
+                    'humidity': humidity,
+                    'last_read_time': current_time
+                })
+        except Exception as e:
+            print(f"Error reading DHT11: {e}")
+    
+    return last_sensor_readings['temperature'], last_sensor_readings['humidity']
 
 def add_text_overlay(frame, texts):
     """Add text overlay to a frame.
@@ -134,7 +162,7 @@ def generate_frames(camera_index):
         try:
             # Get local readings
             current_time = get_current_timestamp()
-            temperature, humidity = get_simulated_readings()
+            temperature, humidity = read_dht11()
             
             # Only process frames from camera0
             if camera_index == 0:
