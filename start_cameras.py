@@ -21,7 +21,7 @@ DHT_PIN = board.D4  # GPIO pin number where DHT11 is connected
 SENSOR_READ_INTERVAL = 2  # Read sensor every 2 seconds
 
 # Initialize DHT sensor
-dht_device = adafruit_dht.DHT11(DHT_PIN)
+dht_device = adafruit_dht.DHT22(DHT_PIN)
 
 # Text overlay constants
 FONT_SCALE = 0.5
