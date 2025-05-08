@@ -66,6 +66,7 @@ def read_dht11():
             temperature = dht_device.temperature
             humidity = dht_device.humidity
             if humidity is not None and temperature is not None:
+                print(f"Temperature: {temperature}C, Humidity: {humidity}%")
                 last_sensor_readings.update({
                     'temperature': temperature,
                     'humidity': humidity,
