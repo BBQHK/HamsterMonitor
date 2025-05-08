@@ -4,7 +4,8 @@ import requests
 import json
 import numpy as np
 from datetime import datetime
-import Adafruit_DHT
+import board
+import adafruit_dht
 import time
 
 # Constants
@@ -16,9 +17,11 @@ MAIN_API_URL = "http://192.168.50.168:8081/process_frame"  # URL of main.py API
 FRAME_SKIP = 3  # Process every 3rd frame
 
 # DHT11 settings
-DHT_SENSOR = Adafruit_DHT.DHT11
-DHT_PIN = 4  # GPIO pin number where DHT11 is connected
+DHT_PIN = board.D4  # GPIO pin number where DHT11 is connected
 SENSOR_READ_INTERVAL = 2  # Read sensor every 2 seconds
+
+# Initialize DHT sensor
+dht_device = adafruit_dht.DHT11(DHT_PIN)
 
 # Text overlay constants
 FONT_SCALE = 0.5
@@ -60,7 +63,8 @@ def read_dht11():
     # Only read sensor if enough time has passed
     if current_time - last_sensor_readings['last_read_time'] >= SENSOR_READ_INTERVAL:
         try:
-            humidity, temperature = Adafruit_DHT.read_retry(DHT_SENSOR, DHT_PIN)
+            temperature = dht_device.temperature
+            humidity = dht_device.humidity
             if humidity is not None and temperature is not None:
                 last_sensor_readings.update({
                     'temperature': temperature,
