@@ -33,7 +33,7 @@ class HamsterActivityDetector:
             'running': 0,
             'eating': 0,
             'drinking': 0,
-            'sleeping': 0,
+            'resting': 0,
             'exploring': 0
         }
         
@@ -42,7 +42,7 @@ class HamsterActivityDetector:
             'running': 0.5,
             'eating': 0.4,
             'drinking': 0.4,
-            'sleeping': 0.3,  # Threshold for motion detection
+            'resting': 0.3,  # Threshold for motion detection
             'exploring': 0.4  # Threshold for exploring detection
         }
         
@@ -119,7 +119,7 @@ class HamsterActivityDetector:
             'running': 0.0,
             'eating': 0.0,
             'drinking': 0.0,
-            'sleeping': 0.0,
+            'resting': 0.0,
             'exploring': 0.0
         }
         
@@ -143,14 +143,14 @@ class HamsterActivityDetector:
         if motion_intensity > self.activity_thresholds['exploring'] and not has_specific_activity:
             # High motion without specific activities = exploring
             activity_probs['exploring'] = motion_intensity
-            activity_probs['sleeping'] = 0.0  # Can't be sleeping if exploring
+            activity_probs['resting'] = 0.0  # Can't be resting if exploring
         else:
-            # Update sleeping probability based on motion
-            if motion_intensity < self.activity_thresholds['sleeping']:
-                activity_probs['sleeping'] = 1.0 - motion_intensity
+            # Update resting probability based on motion
+            if motion_intensity < self.activity_thresholds['resting']:
+                activity_probs['resting'] = 1.0 - motion_intensity
             else:
-                # If there's significant motion, reduce sleeping probability
-                activity_probs['sleeping'] = max(0.0, 1.0 - motion_intensity)
+                # If there's significant motion, reduce resting probability
+                activity_probs['resting'] = max(0.0, 1.0 - motion_intensity)
         
         # Update activity history
         self.activity_history.append(activity_probs)
