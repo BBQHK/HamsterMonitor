@@ -32,19 +32,67 @@ class HamsterActivityDetector:
         self.activity_states = {
             'running': 0,
             'eating': 0,
-            'drinking': 0
+            'drinking': 0,
+            'sleeping': 0,
+            'exploring': 0
         }
         
         # Activity thresholds
         self.activity_thresholds = {
             'running': 0.5,
             'eating': 0.4,
-            'drinking': 0.4
+            'drinking': 0.4,
+            'sleeping': 0.3,  # Threshold for motion detection
+            'exploring': 0.4  # Threshold for exploring detection
         }
         
         # Activity history for temporal analysis
         self.activity_history = []
         self.max_history = 30  # Keep last 30 frames of activity
+        
+        # Background subtraction
+        self.bg_subtractor = cv2.createBackgroundSubtractorMOG2(
+            history=500,
+            varThreshold=16,
+            detectShadows=False
+        )
+        
+        # Motion detection parameters
+        self.motion_threshold = 500  # Minimum area of motion to consider
+        self.motion_history = []
+        self.motion_history_size = 10  # Keep last 10 frames of motion data
+        
+    def detect_motion(self, frame: np.ndarray) -> float:
+        """
+        Detect motion in the frame using background subtraction.
+        
+        Args:
+            frame: Input frame
+            
+        Returns:
+            float: Motion intensity (0.0 to 1.0)
+        """
+        # Apply background subtraction
+        fg_mask = self.bg_subtractor.apply(frame)
+        
+        # Apply morphological operations to reduce noise
+        kernel = np.ones((5,5), np.uint8)
+        fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, kernel)
+        fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, kernel)
+        
+        # Calculate motion intensity
+        motion_area = np.sum(fg_mask > 0)
+        motion_intensity = min(1.0, motion_area / self.motion_threshold)
+        
+        # Update motion history
+        self.motion_history.append(motion_intensity)
+        if len(self.motion_history) > self.motion_history_size:
+            self.motion_history.pop(0)
+            
+        # Calculate average motion over history
+        avg_motion = np.mean(self.motion_history)
+        
+        return avg_motion
         
     def detect_activity(self, frame: np.ndarray) -> Tuple[str, Dict[str, float]]:
         """
@@ -70,7 +118,9 @@ class HamsterActivityDetector:
         activity_probs = {
             'running': 0.0,
             'eating': 0.0,
-            'drinking': 0.0
+            'drinking': 0.0,
+            'sleeping': 0.0,
+            'exploring': 0.0
         }
         
         # Process detections
@@ -82,6 +132,25 @@ class HamsterActivityDetector:
                 activity_probs['running'] = conf
             elif cls == 2:  # water
                 activity_probs['drinking'] = conf
+        
+        # Detect motion
+        motion_intensity = self.detect_motion(frame)
+        
+        # Check if there's significant motion but no specific activities detected
+        has_specific_activity = any(prob > 0.3 for act, prob in activity_probs.items() 
+                                  if act in ['running', 'eating', 'drinking'])
+        
+        if motion_intensity > self.activity_thresholds['exploring'] and not has_specific_activity:
+            # High motion without specific activities = exploring
+            activity_probs['exploring'] = motion_intensity
+            activity_probs['sleeping'] = 0.0  # Can't be sleeping if exploring
+        else:
+            # Update sleeping probability based on motion
+            if motion_intensity < self.activity_thresholds['sleeping']:
+                activity_probs['sleeping'] = 1.0 - motion_intensity
+            else:
+                # If there's significant motion, reduce sleeping probability
+                activity_probs['sleeping'] = max(0.0, 1.0 - motion_intensity)
         
         # Update activity history
         self.activity_history.append(activity_probs)
