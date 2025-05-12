@@ -287,10 +287,10 @@ def get_status():
     
     status = {
         'timestamp': get_current_timestamp(),
-        'temperature': temperature,
-        'humidity': humidity,
-        'activity': last_activity_result['activity'],
-        'activity_probability': last_activity_result['activity_probability']
+        'cage_temperature': temperature,
+        'cage_humidity': humidity,
+        'hamster_activity': last_activity_result['activity'],
+        'hamster_activity_probability': last_activity_result['activity_probability']
     }
     
     return json.dumps(status, indent=2)
