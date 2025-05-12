@@ -279,6 +279,22 @@ def index():
     </html>
     """
 
+@app.route('/status')
+def get_status():
+    """Return current cage status including timestamp, temperature, humidity, and activity."""
+    # Get current readings
+    temperature, humidity = read_dht11()
+    
+    status = {
+        'timestamp': get_current_timestamp(),
+        'temperature': temperature,
+        'humidity': humidity,
+        'activity': last_activity_result['activity'],
+        'activity_probability': last_activity_result['activity_probability']
+    }
+    
+    return json.dumps(status, indent=2)
+
 if __name__ == '__main__':
     try:
         # Initialize all cameras before starting the server
