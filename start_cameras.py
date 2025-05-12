@@ -27,11 +27,9 @@ SENSOR_READ_INTERVAL = 2  # Read sensor every 2 seconds
 OLED_WIDTH = 128
 OLED_HEIGHT = 64
 OLED_I2C_ADDRESS = 0x3C  # Default I2C address for SSD1306
-OLED_SCL = board.D17  # GPIO17 for SCL
-OLED_SDA = board.D27  # GPIO27 for SDA
 
 # Initialize I2C bus and OLED display
-i2c = busio.I2C(OLED_SCL, OLED_SDA)
+i2c = busio.I2C(board.SCL, board.SDA)  # Using default I2C pins (GPIO3 for SCL, GPIO2 for SDA)
 oled = adafruit_ssd1306.SSD1306_I2C(OLED_WIDTH, OLED_HEIGHT, i2c, addr=OLED_I2C_ADDRESS)
 
 # Initialize DHT sensor
