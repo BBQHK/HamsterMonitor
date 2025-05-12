@@ -7,6 +7,9 @@ from datetime import datetime
 import board
 import adafruit_dht
 import time
+import busio
+import adafruit_ssd1306
+from PIL import Image, ImageDraw, ImageFont
 
 # Constants
 CAMERA_INDICES = [0, 2]  # List of camera indices to use
@@ -19,6 +22,17 @@ FRAME_SKIP = 3  # Process every 3rd frame
 # DHT11 settings
 DHT_PIN = board.D4  # GPIO pin number where DHT11 is connected
 SENSOR_READ_INTERVAL = 2  # Read sensor every 2 seconds
+
+# OLED Display settings
+OLED_WIDTH = 128
+OLED_HEIGHT = 64
+OLED_I2C_ADDRESS = 0x3C  # Default I2C address for SSD1306
+OLED_SCL = board.D17  # GPIO17 for SCL
+OLED_SDA = board.D27  # GPIO27 for SDA
+
+# Initialize I2C bus and OLED display
+i2c = busio.I2C(OLED_SCL, OLED_SDA)
+oled = adafruit_ssd1306.SSD1306_I2C(OLED_WIDTH, OLED_HEIGHT, i2c, addr=OLED_I2C_ADDRESS)
 
 # Initialize DHT sensor
 dht_device = adafruit_dht.DHT22(DHT_PIN)
@@ -196,6 +210,8 @@ def generate_frames(camera_index):
                     if response.status_code == 200:
                         # Update the shared activity result
                         last_activity_result.update(response.json())
+                        # Update OLED display with new information
+                        update_oled_display(temperature, humidity)
             
             # Use the shared activity result for overlay
             texts = [
@@ -295,12 +311,44 @@ def get_status():
     
     return json.dumps(status, indent=2)
 
+def update_oled_display(temperature, humidity):
+    """Update the OLED display with temperature and humidity readings.
+    
+    Args:
+        temperature: Current temperature reading
+        humidity: Current humidity reading
+    """
+    # Create a new image with a black background
+    image = Image.new("1", (OLED_WIDTH, OLED_HEIGHT))
+    draw = ImageDraw.Draw(image)
+    
+    # Load default font
+    font = ImageFont.load_default()
+    
+    # Clear the display
+    oled.fill(0)
+    oled.show()
+    
+    # Draw temperature and humidity with larger spacing
+    draw.text((0, 10), f"Temp: {temperature:.1f}C", font=font, fill=255)
+    draw.text((0, 40), f"Hum: {humidity:.1f}%", font=font, fill=255)
+    
+    # Display the image
+    oled.image(image)
+    oled.show()
+
 if __name__ == '__main__':
     try:
         # Initialize all cameras before starting the server
         initialize_cameras()
+        # Clear OLED display on startup
+        oled.fill(0)
+        oled.show()
         app.run(host='0.0.0.0', port=8081, threaded=True)
     finally:
         # Release all camera resources when the application stops
         for camera in cameras.values():
             camera.release()
+        # Clear OLED display on exit
+        oled.fill(0)
+        oled.show()
