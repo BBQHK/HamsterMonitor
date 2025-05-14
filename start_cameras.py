@@ -172,6 +172,8 @@ def generate_frames(camera_index):
         return
     
     frame_count = 0
+    api_error_count = 0
+    api_error_threshold = 3  # Number of consecutive errors before showing API unavailable
     
     while True:
         success, frame = camera.read()
@@ -187,15 +189,20 @@ def generate_frames(camera_index):
             if camera_index == 0:
                 # Process frame only every FRAME_SKIP frames
                 if frame_count % FRAME_SKIP == 0:
-                    # Encode frame as JPEG
-                    _, buffer = cv2.imencode('.jpg', frame)
-                    frame_bytes = buffer.tobytes()
-                    
-                    # Send frame to main.py for processing
-                    response = requests.post(MAIN_API_URL, data=frame_bytes)
-                    if response.status_code == 200:
-                        # Update the shared activity result
-                        last_activity_result.update(response.json())
+                    try:
+                        # Encode frame as JPEG
+                        _, buffer = cv2.imencode('.jpg', frame)
+                        frame_bytes = buffer.tobytes()
+                        
+                        # Send frame to main.py for processing
+                        response = requests.post(MAIN_API_URL, data=frame_bytes, timeout=2)  # Add timeout
+                        if response.status_code == 200:
+                            # Update the shared activity result
+                            last_activity_result.update(response.json())
+                            api_error_count = 0  # Reset error count on success
+                    except (requests.RequestException, json.JSONDecodeError) as e:
+                        api_error_count += 1
+                        print(f"API Error: {e}")
             
             # Use the shared activity result for overlay
             texts = [
@@ -203,8 +210,10 @@ def generate_frames(camera_index):
                 f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%"
             ]
             
-            # Show activity with probability only if it's not Unknown
-            if last_activity_result['activity'] == "Unknown":
+            # Show activity with probability only if it's not Unknown and API is working
+            if api_error_count >= api_error_threshold:
+                texts.append("Activity: API Unavailable")
+            elif last_activity_result['activity'] == "Unknown":
                 texts.append("Activity: Unknown")
             else:
                 texts.append(f"Activity: {last_activity_result['activity']} ({last_activity_result['activity_probability']*100:.1f}%)")
