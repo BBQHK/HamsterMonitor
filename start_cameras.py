@@ -212,11 +212,7 @@ def generate_frames(camera_index):
             
             # Show activity with probability only if it's not Unknown and API is working
             if api_error_count >= api_error_threshold:
-                last_activity_result = {
-                    'activity': 'API Unavailable',
-                    'activity_probability': 0.0
-                }
-                texts.append(f"Activity: {last_activity_result['activity']}")
+                texts.append("Activity: API Unavailable")
             elif last_activity_result['activity'] == "Unknown":
                 texts.append("Activity: Unknown")
             else:
