@@ -12,7 +12,7 @@ import time
 CAMERA_INDICES = [0, 2]  # List of camera indices to use
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
-FPS = 30
+FPS = 15
 MAIN_API_URL = "http://192.168.50.168:8081/process_frame"  # URL of main.py API
 FRAME_SKIP = 3  # Process every 3rd frame
 
