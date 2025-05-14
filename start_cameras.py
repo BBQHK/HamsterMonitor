@@ -7,6 +7,9 @@ from datetime import datetime
 import board
 import adafruit_dht
 import time
+import threading
+from queue import Queue
+import concurrent.futures
 
 # Constants
 CAMERA_INDICES = [0, 2]  # List of camera indices to use
@@ -50,6 +53,11 @@ last_sensor_readings = {
     'humidity': 0.0,
     'last_read_time': 0
 }
+
+# Add new global variables for async processing
+frame_queue = Queue(maxsize=10)  # Queue to store frames for processing
+api_error_count = 0
+api_error_threshold = 3
 
 def get_current_timestamp():
     """Get current timestamp in formatted string."""
@@ -165,6 +173,38 @@ def get_camera(camera_index):
     """Get a camera object for the given index."""
     return cameras.get(camera_index)
 
+def process_frame_async():
+    """Process frames from the queue asynchronously."""
+    global last_activity_result, api_error_count
+    
+    while True:
+        try:
+            frame = frame_queue.get(timeout=1)  # Wait for 1 second for a new frame
+            if frame is None:
+                continue
+                
+            # Encode frame as JPEG
+            _, buffer = cv2.imencode('.jpg', frame)
+            frame_bytes = buffer.tobytes()
+            
+            try:
+                # Send frame to main.py for processing with timeout
+                response = requests.post(MAIN_API_URL, data=frame_bytes, timeout=2)
+                if response.status_code == 200:
+                    last_activity_result.update(response.json())
+                    api_error_count = 0  # Reset error count on success
+            except (requests.RequestException, json.JSONDecodeError) as e:
+                api_error_count += 1
+                print(f"API Error: {e}")
+                
+        except Exception as e:
+            print(f"Error in async processing: {e}")
+            time.sleep(0.1)  # Small delay to prevent CPU spinning
+
+# Start the async processing thread
+processing_thread = threading.Thread(target=process_frame_async, daemon=True)
+processing_thread.start()
+
 def generate_frames(camera_index):
     """Generate video frames from specified camera."""
     camera = get_camera(camera_index)
@@ -172,8 +212,6 @@ def generate_frames(camera_index):
         return
     
     frame_count = 0
-    api_error_count = 0
-    api_error_threshold = 3  # Number of consecutive errors before showing API unavailable
     
     while True:
         success, frame = camera.read()
@@ -189,20 +227,11 @@ def generate_frames(camera_index):
             if camera_index == 0:
                 # Process frame only every FRAME_SKIP frames
                 if frame_count % FRAME_SKIP == 0:
+                    # Try to add frame to queue, skip if queue is full
                     try:
-                        # Encode frame as JPEG
-                        _, buffer = cv2.imencode('.jpg', frame)
-                        frame_bytes = buffer.tobytes()
-                        
-                        # Send frame to main.py for processing
-                        response = requests.post(MAIN_API_URL, data=frame_bytes, timeout=2)  # Add timeout
-                        if response.status_code == 200:
-                            # Update the shared activity result
-                            last_activity_result.update(response.json())
-                            api_error_count = 0  # Reset error count on success
-                    except (requests.RequestException, json.JSONDecodeError) as e:
-                        api_error_count += 1
-                        print(f"API Error: {e}")
+                        frame_queue.put(frame, block=False)
+                    except:
+                        pass  # Skip this frame if queue is full
             
             # Use the shared activity result for overlay
             texts = [
