@@ -28,7 +28,7 @@ SENSOR_READ_INTERVAL = 2  # Read sensor every 2 seconds
 
 # MQ-135 settings
 RO_CLEAN_AIR = 3.6  # Resistance in clean air
-RL = 10.0  # Load resistance in kOhm
+RL = 1000.0  # Load resistance in kOhm
 VOLTAGE_SUPPLY = 5.0  # Supply voltage in volts
 
 # Initialize DHT sensor
