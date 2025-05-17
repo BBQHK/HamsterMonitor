@@ -8,7 +8,7 @@ import adafruit_dht
 import busio
 import adafruit_ads1x15.ads1115 as ADS
 from adafruit_ads1x15.analog_in import AnalogIn
-from src.config import settings
+from config import settings
 
 class SensorManager:
     def __init__(self):
