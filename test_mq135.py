@@ -8,7 +8,7 @@ import math
 # Constants
 RL = 10000  # Load resistor in ohms (check module)
 VCC = 5.0   # MQ-135 supply voltage
-R0 = 5000   # Calibrated in clean air (example)
+R0 = 1559   # Calibrated in clean air (example)
 A_NH3 = 25.0  # NH3 curve constant
 B_NH3 = -1.5  # NH3 curve constant
 TEMP = 24.1   # Temperature in °C (replace with DHT22 reading)
