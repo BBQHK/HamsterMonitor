@@ -10,6 +10,9 @@ import time
 import threading
 from queue import Queue
 import concurrent.futures
+import busio
+import adafruit_ads1x15.ads1115 as ADS
+from adafruit_ads1x15.analog_in import AnalogIn
 
 # Constants
 CAMERA_INDICES = [0, 2, 4]  # List of camera indices to use
@@ -23,8 +26,18 @@ FRAME_SKIP = 3  # Process every 3rd frame
 DHT_PIN = board.D4  # GPIO pin number where DHT11 is connected
 SENSOR_READ_INTERVAL = 2  # Read sensor every 2 seconds
 
+# MQ-135 settings
+RO_CLEAN_AIR = 3.6  # Resistance in clean air
+RL = 10.0  # Load resistance in kOhm
+VOLTAGE_SUPPLY = 5.0  # Supply voltage in volts
+
 # Initialize DHT sensor
 dht_device = adafruit_dht.DHT22(DHT_PIN)
+
+# Initialize I2C bus and ADS1115 for MQ-135
+i2c = busio.I2C(board.SCL, board.SDA)
+ads = ADS.ADS1115(i2c)
+mq135_channel = AnalogIn(ads, ADS.P0)
 
 # Text overlay constants
 FONT_SCALE = 0.5
@@ -51,6 +64,8 @@ last_activity_result = {
 last_sensor_readings = {
     'temperature': 0.0,
     'humidity': 0.0,
+    'air_quality': 'Unknown',
+    'air_quality_ppm': 0.0,
     'last_read_time': 0
 }
 
@@ -63,12 +78,45 @@ def get_current_timestamp():
     """Get current timestamp in formatted string."""
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-def read_dht11():
-    """Read temperature and humidity from DHT11 sensor."""
+def get_mq135_resistance(voltage):
+    """Calculate sensor resistance from voltage reading."""
+    if voltage == 0:
+        return float('inf')
+    return (VOLTAGE_SUPPLY - voltage) / voltage * RL
+
+def get_mq135_ppm(resistance):
+    """Convert resistance to PPM (parts per million)."""
+    if resistance == float('inf'):
+        return 0
+    return (resistance / RO_CLEAN_AIR) * 1000
+
+def get_air_quality():
+    """Read and calculate air quality from MQ-135 sensor."""
+    try:
+        voltage = mq135_channel.voltage
+        resistance = get_mq135_resistance(voltage)
+        ppm = get_mq135_ppm(resistance)
+        
+        if ppm < 100:
+            quality = "Good"
+        elif ppm < 200:
+            quality = "Moderate"
+        elif ppm < 300:
+            quality = "Poor"
+        else:
+            quality = "Very Poor"
+            
+        return quality, ppm
+    except Exception as e:
+        print(f"Error reading air quality: {e}")
+        return "Unknown", 0.0
+
+def read_sensors():
+    """Read temperature, humidity, and air quality sensors."""
     global last_sensor_readings
     current_time = time.time()
     
-    # Only read sensor if enough time has passed
+    # Only read sensors if enough time has passed
     if current_time - last_sensor_readings['last_read_time'] >= SENSOR_READ_INTERVAL:
         max_retries = 3
         retry_delay = 0.5  # seconds
@@ -81,10 +129,15 @@ def read_dht11():
                 humidity = dht_device.humidity
                 
                 if humidity is not None and temperature is not None:
-                    print(f"Temperature: {temperature}C, Humidity: {humidity}%")
+                    # Read air quality
+                    air_quality, air_quality_ppm = get_air_quality()
+                    
+                    print(f"Temperature: {temperature}C, Humidity: {humidity}%, Air Quality: {air_quality} ({air_quality_ppm:.1f} PPM)")
                     last_sensor_readings.update({
                         'temperature': temperature,
                         'humidity': humidity,
+                        'air_quality': air_quality,
+                        'air_quality_ppm': air_quality_ppm,
                         'last_read_time': current_time
                     })
                     break  # Success, exit retry loop
@@ -93,11 +146,11 @@ def read_dht11():
                     time.sleep(retry_delay)
                     
             except Exception as e:
-                print(f"Attempt {attempt + 1}: Error reading DHT11: {e}")
+                print(f"Attempt {attempt + 1}: Error reading sensors: {e}")
                 if attempt < max_retries - 1:  # Don't sleep on the last attempt
                     time.sleep(retry_delay)
     
-    return last_sensor_readings['temperature'], last_sensor_readings['humidity']
+    return last_sensor_readings['temperature'], last_sensor_readings['humidity'], last_sensor_readings['air_quality'], last_sensor_readings['air_quality_ppm']
 
 def add_text_overlay(frame, texts):
     """Add text overlay to a frame.
@@ -221,12 +274,13 @@ def generate_frames(camera_index):
         try:
             # Get local readings
             current_time = get_current_timestamp()
-            temperature, humidity = read_dht11()
+            temperature, humidity, air_quality, air_quality_ppm = read_sensors()
             
             # Use the shared activity result for overlay
             texts = [
                 f"Time: {current_time}",
-                f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%"
+                f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%",
+                f"Air Quality: {air_quality} ({air_quality_ppm:.1f} PPM)"
             ]
             
             # Show activity with probability only if it's not Unknown and API is working
@@ -311,12 +365,14 @@ def index():
 def get_status():
     """Return current cage status including timestamp, temperature, humidity, and activity."""
     # Get current readings
-    temperature, humidity = read_dht11()
+    temperature, humidity, air_quality, air_quality_ppm = read_sensors()
     
     status = {
         'timestamp': get_current_timestamp(),
         'cage_temperature': temperature,
         'cage_humidity': humidity,
+        'air_quality': air_quality,
+        'air_quality_ppm': air_quality_ppm,
         'hamster_activity': last_activity_result['activity'],
         'hamster_activity_probability': last_activity_result['activity_probability']
     }
