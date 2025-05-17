@@ -34,10 +34,28 @@ VOLTAGE_SUPPLY = 5.0  # Supply voltage in volts
 # Initialize DHT sensor
 dht_device = adafruit_dht.DHT22(DHT_PIN)
 
-# Initialize I2C bus and ADS1115 for MQ-135
-i2c = busio.I2C(board.SCL, board.SDA)
-ads = ADS.ADS1115(i2c)
-mq135_channel = AnalogIn(ads, ADS.P0)
+# Initialize I2C bus
+try:
+    print("Initializing I2C bus...")
+    i2c = busio.I2C(board.SCL, board.SDA)
+    print("I2C bus initialized successfully")
+    
+    print("Initializing ADS1115...")
+    ads = ADS.ADS1115(i2c)
+    print("ADS1115 initialized successfully")
+    
+    # Create single-ended input on channel 0
+    mq135_channel = AnalogIn(ads, ADS.P0)
+    print("MQ-135 channel configured successfully")
+except Exception as e:
+    print(f"Error initializing I2C or ADS1115: {e}")
+    print("Please check your connections:")
+    print("1. ADS1115 VDD -> Raspberry Pi 3.3V")
+    print("2. ADS1115 GND -> Raspberry Pi GND")
+    print("3. ADS1115 SDA -> Raspberry Pi GPIO2 (Pin 3)")
+    print("4. ADS1115 SCL -> Raspberry Pi GPIO3 (Pin 5)")
+    print("\nRun 'i2cdetect -y 1' to check if the device is detected")
+    raise
 
 # Text overlay constants
 FONT_SCALE = 0.5
