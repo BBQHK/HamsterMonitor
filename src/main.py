@@ -1,8 +1,8 @@
 """Main application module for the Hamster Monitor system."""
 
-from cameras.camera_manager import CameraManager
-from sensors.sensor_manager import SensorManager
-from web.server import WebServer
+from src.cameras.camera_manager import CameraManager
+from src.sensors.sensor_manager import SensorManager
+from src.web.server import WebServer
 
 def main():
     try:

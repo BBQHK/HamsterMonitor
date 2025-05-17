@@ -5,7 +5,7 @@ import threading
 from queue import Queue
 import requests
 import json
-from ..config import settings
+from src.config import settings
 
 class CameraManager:
     def __init__(self):

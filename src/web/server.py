@@ -4,7 +4,7 @@ from flask import Flask, Response
 import cv2
 import json
 from datetime import datetime
-from ..config import settings
+from src.config import settings
 
 class WebServer:
     def __init__(self, camera_manager, sensor_manager):
