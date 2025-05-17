@@ -27,9 +27,11 @@ DHT_PIN = board.D4  # GPIO pin number where DHT11 is connected
 SENSOR_READ_INTERVAL = 2  # Read sensor every 2 seconds
 
 # MQ-135 settings
-RO_CLEAN_AIR = 3.6  # Resistance in clean air
+RO_CLEAN_AIR = 7.37  # Calibrated in clean air (from test_mq135.py)
 RL = 1.0  # Load resistance in kOhm
 VOLTAGE_SUPPLY = 5.0  # Supply voltage in volts
+A_NH3 = 102.2  # NH3 curve constant
+B_NH3 = -2.243  # NH3 curve constant
 
 # Initialize DHT sensor
 dht_device = adafruit_dht.DHT22(DHT_PIN)
@@ -100,13 +102,14 @@ def get_mq135_resistance(voltage):
     """Calculate sensor resistance from voltage reading."""
     if voltage == 0:
         return float('inf')
-    return (VOLTAGE_SUPPLY - voltage) / voltage * RL
+    return ((VOLTAGE_SUPPLY * RL) / voltage) - RL
 
 def get_mq135_ppm(resistance):
-    """Convert resistance to PPM (parts per million)."""
+    """Convert resistance to PPM (parts per million) using NH3 curve."""
     if resistance == float('inf'):
         return 0
-    return (resistance / RO_CLEAN_AIR) * 1000
+    rs_r0 = resistance / RO_CLEAN_AIR
+    return A_NH3 * rs_r0 ** B_NH3
 
 def get_air_quality():
     """Read and calculate air quality from MQ-135 sensor."""
@@ -115,7 +118,10 @@ def get_air_quality():
         resistance = get_mq135_resistance(voltage)
         ppm = get_mq135_ppm(resistance)
         
-        if ppm < 100:
+        # NH3-based air quality thresholds
+        if ppm < 50:
+            quality = "Excellent"
+        elif ppm < 100:
             quality = "Good"
         elif ppm < 200:
             quality = "Moderate"
