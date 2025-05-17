@@ -276,7 +276,6 @@ def process_frame_async():
                 
         except Exception as e:
             print(f"Error in async processing: {e}")
-            time.sleep(0.1)  # Small delay to prevent CPU spinning
 
 # Start the async processing thread
 processing_thread = threading.Thread(target=process_frame_async, daemon=True)
