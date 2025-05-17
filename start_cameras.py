@@ -13,7 +13,7 @@ import concurrent.futures
 import busio
 import adafruit_ads1x15.ads1115 as ADS
 from adafruit_ads1x15.analog_in import AnalogIn
-import adafruit_mq135
+from mq135 import MQ135
 
 # Constants
 CAMERA_INDICES = [0, 2, 4]  # List of camera indices to use
@@ -45,7 +45,7 @@ try:
     print("MQ-135 channel configured successfully")
     
     # Initialize MQ135 with the analog channel
-    mq135 = adafruit_mq135.MQ135(mq135_channel)
+    mq135 = MQ135(mq135_channel)
     print("MQ-135 sensor initialized successfully")
 except Exception as e:
     print(f"Error initializing I2C or sensors: {e}")
@@ -97,10 +97,10 @@ def get_current_timestamp():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 def get_air_quality():
-    """Read air quality from MQ-135 sensor using the Adafruit library."""
+    """Read air quality from MQ-135 sensor using the library."""
     try:
         # Get PPM reading from the library
-        ppm = mq135.raw_value
+        ppm = mq135.get_ppm()
         
         # Determine air quality level based on PPM
         if ppm < 50:
