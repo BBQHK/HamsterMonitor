@@ -9,8 +9,8 @@ import math
 RL = 1000  # Load resistor in ohms (check module)
 VCC = 5.0   # MQ-135 supply voltage
 R0 = 1559   # Calibrated in clean air (example)
-A_NH3 = 25.0  # NH3 curve constant
-B_NH3 = -1.5  # NH3 curve constant
+A_ALCOHOL = 20.0  # Alcohol curve constant (example, calibrate for your sensor)
+B_ALCOHOL = -1.8  # Alcohol curve constant (example, calibrate for your sensor)
 
 # Initialize ADS1115
 i2c = busio.I2C(board.SCL, board.SDA)
@@ -22,8 +22,8 @@ try:
         vout = channel.voltage
         rs = RL * ((VCC / vout) - 1)
         rs_r0 = rs / R0
-        ppm = A_NH3 * (rs_r0 ** B_NH3)
-        print(f"Voltage: {vout:.3f}V, RS: {rs:.0f}Ω, RS/R0: {rs_r0:.3f}, NH3: {ppm:.2f} ppm")
+        ppm = A_ALCOHOL * (rs_r0 ** B_ALCOHOL)
+        print(f"Voltage: {vout:.3f}V, RS: {rs:.0f}Ω, RS/R0: {rs_r0:.3f}, Alcohol: {ppm:.2f} ppm")
         time.sleep(1)
 except KeyboardInterrupt:
     print("Program terminated")
