@@ -415,7 +415,6 @@ def feed_camera0_frames():
             success, frame = camera.read()
             if not success:
                 print("Failed to read frame from camera 0")
-                time.sleep(0.1)
                 continue
                 
             try:
@@ -425,7 +424,6 @@ def feed_camera0_frames():
                 
         except Exception as e:
             print(f"Error in camera 0 frame feeding: {e}")
-            time.sleep(0.1)
 
 if __name__ == '__main__':
     try:
