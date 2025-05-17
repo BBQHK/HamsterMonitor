@@ -278,8 +278,8 @@ def process_frame_async():
             print(f"Error in async processing: {e}")
 
 # Start the async processing thread
-processing_thread = threading.Thread(target=process_frame_async, daemon=True)
-processing_thread.start()
+# processing_thread = threading.Thread(target=process_frame_async, daemon=True)
+# processing_thread.start()
 
 def generate_frames(camera_index):
     """Generate video frames from specified camera."""
