@@ -93,6 +93,7 @@ last_sensor_readings = {
 frame_queue = Queue(maxsize=10)  # Queue to store frames for processing
 api_error_count = 0
 api_error_threshold = 3
+sensor_thread = None  # Thread for sensor readings
 
 def get_current_timestamp():
     """Get current timestamp in formatted string."""
@@ -135,46 +136,56 @@ def get_air_quality():
         print(f"Error reading air quality: {e}")
         return "Unknown", 0.0
 
-def read_sensors():
-    """Read temperature, humidity, and air quality sensors."""
+def read_sensors_background():
+    """Background thread to continuously read sensors."""
     global last_sensor_readings
-    current_time = time.time()
-    
-    # Only read sensors if enough time has passed
-    if current_time - last_sensor_readings['last_read_time'] >= SENSOR_READ_INTERVAL:
-        max_retries = 3
-        retry_delay = 0.5  # seconds
-        
-        for attempt in range(max_retries):
-            try:
-                # Add a small delay before reading
-                time.sleep(0.1)
-                temperature = dht_device.temperature
-                humidity = dht_device.humidity
+    while True:
+        try:
+            current_time = time.time()
+            if current_time - last_sensor_readings['last_read_time'] >= SENSOR_READ_INTERVAL:
+                max_retries = 3
+                retry_delay = 0.5  # seconds
                 
-                if humidity is not None and temperature is not None:
-                    # Read air quality
-                    air_quality, air_quality_ppm = get_air_quality()
-                    
-                    # print(f"Temperature: {temperature}C, Humidity: {humidity}%, Air Quality: {air_quality} ({air_quality_ppm:.1f} PPM)")
-                    last_sensor_readings.update({
-                        'temperature': temperature,
-                        'humidity': humidity,
-                        'air_quality': air_quality,
-                        'air_quality_ppm': air_quality_ppm,
-                        'last_read_time': current_time
-                    })
-                    break  # Success, exit retry loop
-                else:
-                    print(f"Attempt {attempt + 1}: Invalid readings, retrying...")
-                    time.sleep(retry_delay)
-                    
-            except Exception as e:
-                print(f"Attempt {attempt + 1}: Error reading sensors: {e}")
-                if attempt < max_retries - 1:  # Don't sleep on the last attempt
-                    time.sleep(retry_delay)
-    
-    return last_sensor_readings['temperature'], last_sensor_readings['humidity'], last_sensor_readings['air_quality'], last_sensor_readings['air_quality_ppm']
+                for attempt in range(max_retries):
+                    try:
+                        # Add a small delay before reading
+                        time.sleep(0.1)
+                        temperature = dht_device.temperature
+                        humidity = dht_device.humidity
+                        
+                        if humidity is not None and temperature is not None:
+                            # Read air quality
+                            air_quality, air_quality_ppm = get_air_quality()
+                            
+                            last_sensor_readings.update({
+                                'temperature': temperature,
+                                'humidity': humidity,
+                                'air_quality': air_quality,
+                                'air_quality_ppm': air_quality_ppm,
+                                'last_read_time': current_time
+                            })
+                            break  # Success, exit retry loop
+                        else:
+                            print(f"Attempt {attempt + 1}: Invalid readings, retrying...")
+                            time.sleep(retry_delay)
+                            
+                    except Exception as e:
+                        print(f"Attempt {attempt + 1}: Error reading sensors: {e}")
+                        if attempt < max_retries - 1:  # Don't sleep on the last attempt
+                            time.sleep(retry_delay)
+            
+            time.sleep(0.1)  # Small delay between checks
+            
+        except Exception as e:
+            print(f"Error in sensor reading thread: {e}")
+            time.sleep(1)  # Longer delay on error
+
+def read_sensors():
+    """Get the latest sensor readings from cache."""
+    return (last_sensor_readings['temperature'], 
+            last_sensor_readings['humidity'], 
+            last_sensor_readings['air_quality'], 
+            last_sensor_readings['air_quality_ppm'])
 
 def add_text_overlay(frame, texts):
     """Add text overlay to a frame.
@@ -297,11 +308,7 @@ def generate_frames(camera_index):
         try:
             # Get local readings
             current_time = get_current_timestamp()
-            # temperature, humidity, air_quality, air_quality_ppm = read_sensors()
-            temperature = 20.0
-            humidity = 50.0
-            air_quality = "Good"
-            air_quality_ppm = 100.0
+            temperature, humidity, air_quality, air_quality_ppm = read_sensors()
             
             # Use the shared activity result for overlay
             texts = [
@@ -441,6 +448,10 @@ if __name__ == '__main__':
         # Start camera 0 frame feeding thread
         camera0_thread = threading.Thread(target=feed_camera0_frames, daemon=True)
         camera0_thread.start()
+        
+        # Start sensor reading thread
+        sensor_thread = threading.Thread(target=read_sensors_background, daemon=True)
+        sensor_thread.start()
         
         app.run(host='0.0.0.0', port=8081, threaded=True)
     finally:
