@@ -13,7 +13,6 @@ import concurrent.futures
 import busio
 import adafruit_ads1x15.ads1115 as ADS
 from adafruit_ads1x15.analog_in import AnalogIn
-from mq135 import MQ135
 
 # Constants
 CAMERA_INDICES = [0, 2, 4]  # List of camera indices to use
@@ -27,10 +26,15 @@ FRAME_SKIP = 3  # Process every 3rd frame
 DHT_PIN = board.D4  # GPIO pin number where DHT11 is connected
 SENSOR_READ_INTERVAL = 2  # Read sensor every 2 seconds
 
+# MQ-135 settings
+RO_CLEAN_AIR = 3.6  # Resistance in clean air
+RL = 10.0  # Load resistance in kOhm
+VOLTAGE_SUPPLY = 5.0  # Supply voltage in volts
+
 # Initialize DHT sensor
 dht_device = adafruit_dht.DHT22(DHT_PIN)
 
-# Initialize I2C bus and ADS1115 for MQ-135
+# Initialize I2C bus
 try:
     print("Initializing I2C bus...")
     i2c = busio.I2C(board.SCL, board.SDA)
@@ -43,12 +47,8 @@ try:
     # Create single-ended input on channel 0
     mq135_channel = AnalogIn(ads, ADS.P0)
     print("MQ-135 channel configured successfully")
-    
-    # Initialize MQ135 with the analog channel
-    mq135 = MQ135(mq135_channel)
-    print("MQ-135 sensor initialized successfully")
 except Exception as e:
-    print(f"Error initializing I2C or sensors: {e}")
+    print(f"Error initializing I2C or ADS1115: {e}")
     print("Please check your connections:")
     print("1. ADS1115 VDD -> Raspberry Pi 3.3V")
     print("2. ADS1115 GND -> Raspberry Pi GND")
@@ -96,18 +96,30 @@ def get_current_timestamp():
     """Get current timestamp in formatted string."""
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+def get_mq135_resistance(voltage):
+    """Calculate sensor resistance from voltage reading."""
+    if voltage == 0:
+        return float('inf')
+    return (VOLTAGE_SUPPLY - voltage) / voltage * RL
+
+def get_mq135_ppm(resistance):
+    """Convert resistance to PPM (parts per million)."""
+    if resistance == float('inf'):
+        return 0
+    return (resistance / RO_CLEAN_AIR) * 1000
+
 def get_air_quality():
-    """Read air quality from MQ-135 sensor using the library."""
+    """Read and calculate air quality from MQ-135 sensor."""
     try:
-        # Get PPM reading from the library
-        ppm = mq135.get_ppm()
+        voltage = mq135_channel.voltage
+        resistance = get_mq135_resistance(voltage)
+        ppm = get_mq135_ppm(resistance)
         
-        # Determine air quality level based on PPM
-        if ppm < 50:
+        if ppm < 100:
             quality = "Good"
-        elif ppm < 100:
-            quality = "Moderate"
         elif ppm < 200:
+            quality = "Moderate"
+        elif ppm < 300:
             quality = "Poor"
         else:
             quality = "Very Poor"
