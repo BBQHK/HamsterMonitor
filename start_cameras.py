@@ -409,6 +409,7 @@ def feed_camera0_frames():
         print("Failed to start camera 0 frame feeding - camera not initialized")
         return
         
+    frame_count = 0
     while True:
         try:
             success, frame = camera.read()
@@ -416,10 +417,14 @@ def feed_camera0_frames():
                 print("Failed to read frame from camera 0")
                 continue
                 
-            try:
-                frame_queue.put(frame, block=False)
-            except:
-                pass  # Skip this frame if queue is full
+            # Only process every FRAME_SKIP frames
+            if frame_count % FRAME_SKIP == 0:
+                try:
+                    frame_queue.put(frame, block=False)
+                except:
+                    pass  # Skip this frame if queue is full
+            
+            frame_count += 1
                 
         except Exception as e:
             print(f"Error in camera 0 frame feeding: {e}")
