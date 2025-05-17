@@ -223,16 +223,6 @@ def generate_frames(camera_index):
             current_time = get_current_timestamp()
             temperature, humidity = read_dht11()
             
-            # Only process frames from camera0
-            if camera_index == 0:
-                # Process frame only every FRAME_SKIP frames
-                if frame_count % FRAME_SKIP == 0:
-                    # Try to add frame to queue, skip if queue is full
-                    try:
-                        frame_queue.put(frame, block=False)
-                    except:
-                        pass  # Skip this frame if queue is full
-            
             # Use the shared activity result for overlay
             texts = [
                 f"Time: {current_time}",
@@ -333,10 +323,39 @@ def get_status():
     
     return json.dumps(status, indent=2)
 
+def feed_camera0_frames():
+    """Continuously feed frames from camera 0 into the queue."""
+    camera = get_camera(0)
+    if camera is None:
+        print("Failed to start camera 0 frame feeding - camera not initialized")
+        return
+        
+    while True:
+        try:
+            success, frame = camera.read()
+            if not success:
+                print("Failed to read frame from camera 0")
+                time.sleep(0.1)
+                continue
+                
+            try:
+                frame_queue.put(frame, block=False)
+            except:
+                pass  # Skip this frame if queue is full
+                
+        except Exception as e:
+            print(f"Error in camera 0 frame feeding: {e}")
+            time.sleep(0.1)
+
 if __name__ == '__main__':
     try:
         # Initialize all cameras before starting the server
         initialize_cameras()
+        
+        # Start camera 0 frame feeding thread
+        camera0_thread = threading.Thread(target=feed_camera0_frames, daemon=True)
+        camera0_thread.start()
+        
         app.run(host='0.0.0.0', port=8081, threaded=True)
     finally:
         # Release all camera resources when the application stops
