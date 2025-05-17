@@ -435,8 +435,8 @@ if __name__ == '__main__':
         initialize_cameras()
         
         # Start camera 0 frame feeding thread
-        camera0_thread = threading.Thread(target=feed_camera0_frames, daemon=True)
-        camera0_thread.start()
+        # camera0_thread = threading.Thread(target=feed_camera0_frames, daemon=True)
+        # camera0_thread.start()
         
         app.run(host='0.0.0.0', port=8081, threaded=True)
     finally:
