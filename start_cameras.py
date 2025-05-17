@@ -12,7 +12,7 @@ from queue import Queue
 import concurrent.futures
 
 # Constants
-CAMERA_INDICES = [0, 2]  # List of camera indices to use
+CAMERA_INDICES = [0, 2, 4]  # List of camera indices to use
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 FPS = 15
