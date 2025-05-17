@@ -297,7 +297,11 @@ def generate_frames(camera_index):
         try:
             # Get local readings
             current_time = get_current_timestamp()
-            temperature, humidity, air_quality, air_quality_ppm = read_sensors()
+            # temperature, humidity, air_quality, air_quality_ppm = read_sensors()
+            temperature = 20.0
+            humidity = 50.0
+            air_quality = "Good"
+            air_quality_ppm = 100.0
             
             # Use the shared activity result for overlay
             texts = [
