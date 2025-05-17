@@ -156,7 +156,7 @@ def read_sensors():
                     # Read air quality
                     air_quality, air_quality_ppm = get_air_quality()
                     
-                    print(f"Temperature: {temperature}C, Humidity: {humidity}%, Air Quality: {air_quality} ({air_quality_ppm:.1f} PPM)")
+                    # print(f"Temperature: {temperature}C, Humidity: {humidity}%, Air Quality: {air_quality} ({air_quality_ppm:.1f} PPM)")
                     last_sensor_readings.update({
                         'temperature': temperature,
                         'humidity': humidity,
