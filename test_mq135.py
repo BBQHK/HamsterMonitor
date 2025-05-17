@@ -6,7 +6,7 @@ from adafruit_ads1x15.analog_in import AnalogIn
 import math
 
 # Constants
-RL = 10000  # Load resistor in ohms (check module)
+RL = 1000  # Load resistor in ohms (check module)
 VCC = 5.0   # MQ-135 supply voltage
 R0 = 1559   # Calibrated in clean air (example)
 A_NH3 = 25.0  # NH3 curve constant
