@@ -332,52 +332,86 @@ def generate_frames(camera_index):
                     time.sleep(0.1)
                     continue
                 frame = camera0_latest_frame.copy()
+                
+            try:
+                # Get local readings
+                current_time = get_current_timestamp()
+                temperature, humidity, air_quality, air_quality_ppm = read_sensors()
+                
+                # Use the shared activity result for overlay
+                texts = [
+                    f"Time: {current_time}",
+                    f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%",
+                    f"Air Quality: {air_quality} ({air_quality_ppm:.1f} PPM)"
+                ]
+                
+                # Show activity with probability only if it's not Unknown and API is working
+                if api_error_count >= api_error_threshold:
+                    texts.append("Activity: API Unavailable")
+                elif last_activity_result['activity'] == "Unknown":
+                    texts.append("Activity: Unknown")
+                else:
+                    texts.append(f"Activity: {last_activity_result['activity']} ({last_activity_result['activity_probability']*100:.1f}%)")
+                
+                # Add text overlay to frame
+                add_text_overlay(frame, texts)
+                
+            except Exception as e:
+                print(f"Error processing frame: {e}")
+                # Add error message to frame
+                cv2.putText(frame, f"Error: {str(e)}", (50, FRAME_HEIGHT//2), 
+                           FONT, FONT_SCALE, TEXT_COLOR, FONT_THICKNESS)
+
+            # Encode processed frame as JPEG for MJPEG streaming
+            ret, buffer = cv2.imencode('.jpg', frame)
+            frame = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
     else:
         # For other cameras, read directly
         camera = get_camera(camera_index)
         if camera is None:
             return
-    
-    while True:
-        try:
-            if camera_index != 0:
+            
+        while True:
+            try:
                 success, frame = camera.read()
                 if not success:
                     break
 
-            # Get local readings
-            current_time = get_current_timestamp()
-            temperature, humidity, air_quality, air_quality_ppm = read_sensors()
-            
-            # Use the shared activity result for overlay
-            texts = [
-                f"Time: {current_time}",
-                f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%",
-                f"Air Quality: {air_quality} ({air_quality_ppm:.1f} PPM)"
-            ]
-            
-            # Show activity with probability only if it's not Unknown and API is working
-            if api_error_count >= api_error_threshold:
-                texts.append("Activity: API Unavailable")
-            elif last_activity_result['activity'] == "Unknown":
-                texts.append("Activity: Unknown")
-            else:
-                texts.append(f"Activity: {last_activity_result['activity']} ({last_activity_result['activity_probability']*100:.1f}%)")
-            
-            # Add text overlay to frame
-            add_text_overlay(frame, texts)
-            
-        except Exception as e:
-            print(f"Error processing frame: {e}")
-            # Add error message to frame
-            cv2.putText(frame, f"Error: {str(e)}", (50, FRAME_HEIGHT//2), 
-                       FONT, FONT_SCALE, TEXT_COLOR, FONT_THICKNESS)
+                # Get local readings
+                current_time = get_current_timestamp()
+                temperature, humidity, air_quality, air_quality_ppm = read_sensors()
+                
+                # Use the shared activity result for overlay
+                texts = [
+                    f"Time: {current_time}",
+                    f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%",
+                    f"Air Quality: {air_quality} ({air_quality_ppm:.1f} PPM)"
+                ]
+                
+                # Show activity with probability only if it's not Unknown and API is working
+                if api_error_count >= api_error_threshold:
+                    texts.append("Activity: API Unavailable")
+                elif last_activity_result['activity'] == "Unknown":
+                    texts.append("Activity: Unknown")
+                else:
+                    texts.append(f"Activity: {last_activity_result['activity']} ({last_activity_result['activity_probability']*100:.1f}%)")
+                
+                # Add text overlay to frame
+                add_text_overlay(frame, texts)
+                
+            except Exception as e:
+                print(f"Error processing frame: {e}")
+                # Add error message to frame
+                cv2.putText(frame, f"Error: {str(e)}", (50, FRAME_HEIGHT//2), 
+                           FONT, FONT_SCALE, TEXT_COLOR, FONT_THICKNESS)
 
-        # Encode processed frame as JPEG for MJPEG streaming
-        ret, buffer = cv2.imencode('.jpg', frame)
-        frame = buffer.tobytes()
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+            # Encode processed frame as JPEG for MJPEG streaming
+            ret, buffer = cv2.imencode('.jpg', frame)
+            frame = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
 @app.route('/camera<int:camera_index>')
 def camera_feed(camera_index):
