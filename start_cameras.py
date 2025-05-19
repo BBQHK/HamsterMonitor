@@ -288,10 +288,6 @@ def process_frame_async():
         except Exception as e:
             print(f"Error in async processing: {e}")
 
-# Start the async processing thread
-processing_thread = threading.Thread(target=process_frame_async, daemon=True)
-processing_thread.start()
-
 def generate_frames(camera_index):
     """Generate video frames from specified camera."""
     camera = get_camera(camera_index)
@@ -452,6 +448,10 @@ if __name__ == '__main__':
         # Start sensor reading thread
         sensor_thread = threading.Thread(target=read_sensors_background, daemon=True)
         sensor_thread.start()
+        
+        # Start the async processing thread
+        processing_thread = threading.Thread(target=process_frame_async, daemon=True)
+        processing_thread.start()
         
         app.run(host='0.0.0.0', port=8081, threaded=True)
     finally:
