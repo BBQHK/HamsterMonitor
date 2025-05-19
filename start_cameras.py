@@ -94,6 +94,8 @@ frame_queue = Queue(maxsize=10)  # Queue to store frames for processing
 api_error_count = 0
 api_error_threshold = 3
 sensor_thread = None  # Thread for sensor readings
+camera0_latest_frame = None  # Store the latest frame from camera 0
+camera0_frame_lock = threading.Lock()  # Lock for thread-safe frame access
 
 def get_current_timestamp():
     """Get current timestamp in formatted string."""
@@ -288,20 +290,61 @@ def process_frame_async():
         except Exception as e:
             print(f"Error in async processing: {e}")
 
+def feed_camera0_frames():
+    """Continuously feed frames from camera 0 into the queue."""
+    global camera0_latest_frame
+    camera = get_camera(0)
+    if camera is None:
+        print("Failed to start camera 0 frame feeding - camera not initialized")
+        return
+        
+    frame_count = 0
+    while True:
+        try:
+            success, frame = camera.read()
+            if not success:
+                print("Failed to read frame from camera 0")
+                continue
+                
+            # Update the latest frame
+            with camera0_frame_lock:
+                camera0_latest_frame = frame.copy()
+                
+            # Only process every FRAME_SKIP frames
+            if frame_count % FRAME_SKIP == 0:
+                try:
+                    frame_queue.put(frame, block=False)
+                except:
+                    pass  # Skip this frame if queue is full
+            
+            frame_count += 1
+                
+        except Exception as e:
+            print(f"Error in camera 0 frame feeding: {e}")
+
 def generate_frames(camera_index):
     """Generate video frames from specified camera."""
-    camera = get_camera(camera_index)
-    if camera is None:
-        return
-    
-    frame_count = 0
+    if camera_index == 0:
+        # For camera 0, use the shared frame buffer
+        while True:
+            with camera0_frame_lock:
+                if camera0_latest_frame is None:
+                    time.sleep(0.1)
+                    continue
+                frame = camera0_latest_frame.copy()
+    else:
+        # For other cameras, read directly
+        camera = get_camera(camera_index)
+        if camera is None:
+            return
     
     while True:
-        success, frame = camera.read()
-        if not success:
-            break
-
         try:
+            if camera_index != 0:
+                success, frame = camera.read()
+                if not success:
+                    break
+
             # Get local readings
             current_time = get_current_timestamp()
             temperature, humidity, air_quality, air_quality_ppm = read_sensors()
@@ -323,8 +366,6 @@ def generate_frames(camera_index):
             
             # Add text overlay to frame
             add_text_overlay(frame, texts)
-            
-            frame_count += 1
             
         except Exception as e:
             print(f"Error processing frame: {e}")
@@ -408,33 +449,6 @@ def get_status():
     }
     
     return json.dumps(status, indent=2)
-
-def feed_camera0_frames():
-    """Continuously feed frames from camera 0 into the queue."""
-    camera = get_camera(0)
-    if camera is None:
-        print("Failed to start camera 0 frame feeding - camera not initialized")
-        return
-        
-    frame_count = 0
-    while True:
-        try:
-            success, frame = camera.read()
-            if not success:
-                print("Failed to read frame from camera 0")
-                continue
-                
-            # Only process every FRAME_SKIP frames
-            if frame_count % FRAME_SKIP == 0:
-                try:
-                    frame_queue.put(frame, block=False)
-                except:
-                    pass  # Skip this frame if queue is full
-            
-            frame_count += 1
-                
-        except Exception as e:
-            print(f"Error in camera 0 frame feeding: {e}")
 
 if __name__ == '__main__':
     try:
