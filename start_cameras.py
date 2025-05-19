@@ -27,7 +27,7 @@ DHT_PIN = board.D4  # GPIO pin number where DHT11 is connected
 SENSOR_READ_INTERVAL = 2  # Read sensor every 2 seconds
 
 # MQ-135 settings
-RO_CLEAN_AIR = 7.37  # Calibrated in clean air (from test_mq135.py)
+RO_CLEAN_AIR = 9.20  # Calibrated in clean air (from test_mq135.py)
 RL = 1.0  # Load resistance in kOhm
 VOLTAGE_SUPPLY = 5.0  # Supply voltage in volts
 A_NH3 = 102.2  # NH3 curve constant
