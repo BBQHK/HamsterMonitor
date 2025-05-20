@@ -322,7 +322,8 @@ def generate_frames(camera_index):
                 texts.append(f"Activity: {last_activity_result['activity']} ({last_activity_result['activity_probability']*100:.1f}%)")
             
             # Add text overlay to frame
-            add_text_overlay(frame, texts)
+            if camera_index != 0:
+                add_text_overlay(frame, texts)
             
             frame_count += 1
             
