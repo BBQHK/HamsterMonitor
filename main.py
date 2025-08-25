@@ -8,12 +8,16 @@ from ai_activity_detector import HamsterActivityDetector
 import requests
 from io import BytesIO
 from PIL import Image
+from activity_logger import ActivityLogger
 
 # Initialize Flask app
 app = Flask(__name__)
 
 # Initialize AI activity detector
 activity_detector = HamsterActivityDetector("best.pt")
+
+# Initialize activity logger
+activity_logger = ActivityLogger()
 
 @app.route('/process_frame', methods=['POST'])
 def process_frame_api():
@@ -32,6 +36,12 @@ def process_frame_api():
         # Use AI to detect activity
         activity, activity_probs = activity_detector.detect_activity(frame)
         
+        # Get motion intensity for logging
+        motion_intensity = activity_detector.detect_motion(frame)
+        
+        # Log the activity data
+        activity_logger.log_activity(activity, activity_probs, motion_intensity)
+        
         # Check if all probabilities are 0.0
         if all(prob == 0.0 for prob in activity_probs.values()):
             activity = "Unknown"
@@ -43,7 +53,8 @@ def process_frame_api():
         response = {
             "activity": activity,
             "activity_probability": activity_probability,
-            "all_probabilities": {k: float(v) for k, v in activity_probs.items()}
+            "all_probabilities": {k: float(v) for k, v in activity_probs.items()},
+            "motion_intensity": float(motion_intensity)
         }
         
         return jsonify(response)
