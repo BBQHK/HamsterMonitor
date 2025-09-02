@@ -136,21 +136,28 @@ class HamsterActivityDetector:
         # Detect motion
         motion_intensity = self.detect_motion(frame)
         
-        # Check if there's significant motion but no specific activities detected
+        # Check if there's a specific activity detected with high confidence
         has_specific_activity = any(prob > 0.3 for act, prob in activity_probs.items() 
                                   if act in ['running', 'eating', 'drinking'])
         
-        if motion_intensity > self.activity_thresholds['exploring'] and not has_specific_activity:
-            # High motion without specific activities = exploring
-            activity_probs['exploring'] = motion_intensity
-            activity_probs['resting'] = 0.0  # Can't be resting if exploring
+        # If specific activity is detected with high confidence, prioritize it
+        if has_specific_activity:
+            # Reduce resting probability when specific activities are detected
+            activity_probs['resting'] = max(0.0, 0.1)  # Keep minimal resting probability
+            activity_probs['exploring'] = 0.0  # Can't be exploring if doing specific activity
         else:
-            # Update resting probability based on motion
-            if motion_intensity < self.activity_thresholds['resting']:
-                activity_probs['resting'] = 1.0 - motion_intensity
+            # No specific activity detected, use motion-based logic
+            if motion_intensity > self.activity_thresholds['exploring']:
+                # High motion without specific activities = exploring
+                activity_probs['exploring'] = motion_intensity
+                activity_probs['resting'] = 0.0  # Can't be resting if exploring
             else:
-                # If there's significant motion, reduce resting probability
-                activity_probs['resting'] = max(0.0, 1.0 - motion_intensity)
+                # Update resting probability based on motion
+                if motion_intensity < self.activity_thresholds['resting']:
+                    activity_probs['resting'] = 1.0 - motion_intensity
+                else:
+                    # If there's significant motion, reduce resting probability
+                    activity_probs['resting'] = max(0.0, 1.0 - motion_intensity)
         
         # Update activity history
         self.activity_history.append(activity_probs)
