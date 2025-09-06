@@ -3,3 +3,4 @@ raw_data
 runs
 __pycache__
 labeled_videos
+hamster_activity.db
