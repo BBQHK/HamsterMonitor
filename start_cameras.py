@@ -8,8 +8,6 @@ import board
 import adafruit_dht
 import time
 import threading
-from queue import Queue
-import concurrent.futures
 import busio
 import adafruit_ads1x15.ads1115 as ADS
 from adafruit_ads1x15.analog_in import AnalogIn
@@ -19,7 +17,8 @@ CAMERA_INDICES = [0, 2, 4]  # List of camera indices to use
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 FPS = 15
-MAIN_API_URL = "http://192.168.50.168:8081/process_frame"  # URL of main.py API
+MAIN_API_URL = "http://192.168.50.168:8082"  # URL of main.py API
+DETECTION_RESULT_URL = f"{MAIN_API_URL}/detection_result"  # URL for getting detection results
 FRAME_SKIP = 3  # Process every 3rd frame
 
 # DHT11 settings
@@ -89,8 +88,7 @@ last_sensor_readings = {
     'last_read_time': 0
 }
 
-# Add new global variables for async processing
-frame_queue = Queue(maxsize=10)  # Queue to store frames for processing
+# Add new global variables for detection result polling
 api_error_count = 0
 api_error_threshold = 3
 sensor_thread = None  # Thread for sensor readings
@@ -261,32 +259,32 @@ def get_camera(camera_index):
     """Get a camera object for the given index."""
     return cameras.get(camera_index)
 
-def process_frame_async():
-    """Process frames from the queue asynchronously."""
+def poll_detection_results():
+    """Poll detection results from main.py server."""
     global last_activity_result, api_error_count
     
     while True:
         try:
-            frame = frame_queue.get(timeout=1)  # Wait for 1 second for a new frame
-            if frame is None:
-                continue
-                
-            # Encode frame as JPEG
-            _, buffer = cv2.imencode('.jpg', frame)
-            frame_bytes = buffer.tobytes()
-            
-            try:
-                # Send frame to main.py for processing with timeout
-                response = requests.post(MAIN_API_URL, data=frame_bytes, timeout=2)
-                if response.status_code == 200:
-                    last_activity_result.update(response.json())
-                    api_error_count = 0  # Reset error count on success
-            except (requests.RequestException, json.JSONDecodeError) as e:
+            # Get detection result from main.py
+            response = requests.get(DETECTION_RESULT_URL, timeout=2)
+            if response.status_code == 200:
+                result = response.json()
+                last_activity_result.update({
+                    'activity': result.get('activity', 'Unknown'),
+                    'activity_probability': result.get('activity_probability', 0.0)
+                })
+                api_error_count = 0  # Reset error count on success
+            else:
                 api_error_count += 1
-                print(f"API Error: {e}")
+                print(f"Failed to get detection result: {response.status_code}")
                 
+        except (requests.RequestException, json.JSONDecodeError) as e:
+            api_error_count += 1
+            print(f"Detection result polling error: {e}")
         except Exception as e:
-            print(f"Error in async processing: {e}")
+            print(f"Error in detection result polling: {e}")
+            
+        time.sleep(0.5)  # Poll every 500ms
 
 def generate_frames(camera_index):
     """Generate video frames from specified camera."""
@@ -410,49 +408,19 @@ def get_status():
     
     return json.dumps(status, indent=2)
 
-def feed_camera0_frames():
-    """Continuously feed frames from camera 0 into the queue."""
-    camera = get_camera(0)
-    if camera is None:
-        print("Failed to start camera 0 frame feeding - camera not initialized")
-        return
-        
-    frame_count = 0
-    while True:
-        try:
-            success, frame = camera.read()
-            if not success:
-                print("Failed to read frame from camera 0")
-                continue
-                
-            # Only process every FRAME_SKIP frames
-            if frame_count % FRAME_SKIP == 0:
-                try:
-                    frame_queue.put(frame, block=False)
-                except:
-                    pass  # Skip this frame if queue is full
-            
-            frame_count += 1
-                
-        except Exception as e:
-            print(f"Error in camera 0 frame feeding: {e}")
 
 if __name__ == '__main__':
     try:
         # Initialize all cameras before starting the server
         initialize_cameras()
         
-        # Start camera 0 frame feeding thread
-        # camera0_thread = threading.Thread(target=feed_camera0_frames, daemon=True)
-        # camera0_thread.start()
-        
         # Start sensor reading thread
         sensor_thread = threading.Thread(target=read_sensors_background, daemon=True)
         sensor_thread.start()
         
-        # Start the async processing thread
-        # processing_thread = threading.Thread(target=process_frame_async, daemon=True)
-        # processing_thread.start()
+        # Start the detection result polling thread
+        detection_polling_thread = threading.Thread(target=poll_detection_results, daemon=True)
+        detection_polling_thread.start()
         
         app.run(host='0.0.0.0', port=8081, threaded=True)
     finally:
