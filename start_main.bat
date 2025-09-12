@@ -20,6 +20,9 @@ if errorlevel 1 (
 )
 echo Conda environment 'hamster-monitor-env' activated
 
+:: Change to the activity monitor server directory
+cd /d "%~dp0activity_monitor_server"
+
 :: Check if required files exist
 if not exist "main.py" (
     echo Error: main.py not found
