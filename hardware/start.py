@@ -17,8 +17,8 @@ CAMERA_INDICES = [0, 2, 4]  # List of camera indices to use
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 FPS = 15
-MAIN_API_URL = "http://192.168.50.168:8082"  # URL of main.py API
-DETECTION_RESULT_URL = f"{MAIN_API_URL}/detection_result"  # URL for getting detection results
+API_URL = "http://192.168.50.168:8082"  # URL of activity monitor server API
+DETECTION_RESULT_URL = f"{API_URL}/detection_result"  # URL for getting detection results
 FRAME_SKIP = 3  # Process every 3rd frame
 
 # DHT11 settings
