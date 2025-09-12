@@ -13,13 +13,13 @@ yolo export model=runs/train/exp/weights/best.pt format=onnx
 
 Setup Service:
 # Copy the service file to systemd directory
-sudo cp hamster_cam.service /etc/systemd/system/
+sudo cp hamster_monitor.service /etc/systemd/system/
 
 # Reload systemd to recognize the new service
 sudo systemctl daemon-reload
 
 # Enable the service to start on boot
-sudo systemctl enable hamster_cam
+sudo systemctl enable hamster_monitor
 
 # Start the service
-sudo systemctl start hamster_cam
+sudo systemctl start hamster_monitor

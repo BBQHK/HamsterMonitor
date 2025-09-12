@@ -22,7 +22,7 @@ activity_detector = HamsterActivityDetector("best.pt")
 db = HamsterDatabase("hamster_activity.db")
 
 # Configuration
-CAMERA_SERVER_URL = "http://192.168.50.167:8081"  # URL of start_cameras.py server
+SERVER_URL = "http://192.168.50.167:8081"  # URL of hamster monitoring hardware server
 PROCESSING_INTERVAL = 0.2  # Process frames every 200ms (5 FPS)
 
 # Store latest detection result
@@ -90,7 +90,7 @@ def monitor_camera_stream():
     while True:
         try:
             # Connect to the streaming feed
-            response = requests.get(f"{CAMERA_SERVER_URL}/camera0", stream=True, timeout=10)
+            response = requests.get(f"{SERVER_URL}/camera0", stream=True, timeout=10)
             if response.status_code == 200:
                 print("Connected to camera stream")
                 
