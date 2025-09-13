@@ -117,7 +117,7 @@ class HamsterDatabaseAnalyzer:
         # Create the plot
         plt.figure(figsize=figsize)
         
-        # Merge all activities into one timeline - ABSOLUTELY NO OVERLAPPING
+        # Merge all activities into one timeline - GROUP CONSECUTIVE SAME ACTIVITIES
         # Sort all data by timestamp
         all_data = df_to_plot.sort_values('timestamp').copy()
         
@@ -128,21 +128,41 @@ class HamsterDatabaseAnalyzer:
         # Get all unique timestamps and create non-overlapping segments
         unique_times = sorted(all_data['time_of_day'].unique())
         
+        # Group consecutive activities of the same type
+        current_activity = None
+        current_start = None
+        
         for i, time_point in enumerate(unique_times):
             # Get the activity at this time point
             activity_at_time = all_data[all_data['time_of_day'] == time_point]['activity'].iloc[0]
             
-            # Determine start and end times for this segment
-            start_time = time_point
-            
-            if i < len(unique_times) - 1:
-                # Not the last time point - end at the next time point
-                end_time = unique_times[i + 1]
+            if current_activity is None:
+                # First activity
+                current_activity = activity_at_time
+                current_start = time_point
+            elif activity_at_time == current_activity:
+                # Same activity continues - do nothing, keep extending
+                continue
             else:
-                # Last time point - extend slightly for visibility
-                end_time = time_point + 0.01  # 36 seconds
+                # Activity changed - save the previous range and start new one
+                if i < len(unique_times) - 1:
+                    # End at the current time point
+                    end_time = time_point
+                else:
+                    # This is the last segment, extend slightly
+                    end_time = time_point + 0.01
+                
+                ranges.append((current_start, end_time, current_activity))
+                
+                # Start new activity
+                current_activity = activity_at_time
+                current_start = time_point
         
-            ranges.append((start_time, end_time, activity_at_time))
+        # Don't forget the last range
+        if current_activity is not None:
+            if len(unique_times) > 0:
+                end_time = unique_times[-1] + 0.01  # Extend slightly for visibility
+                ranges.append((current_start, end_time, current_activity))
         
         # Plot all ranges on a single line
         for start_time, end_time, activity in ranges:
