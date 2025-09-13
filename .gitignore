@@ -4,3 +4,4 @@ runs
 __pycache__
 labeled_videos
 hamster_activity.db
+hamster_activity.db-journal
