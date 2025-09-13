@@ -117,48 +117,43 @@ class HamsterDatabaseAnalyzer:
         # Create the plot
         plt.figure(figsize=figsize)
         
-        # Plot each activity as horizontal bars/ranges
-        y_positions = {}
-        for i, activity in enumerate(activities):
-            y_pos = len(activities) - i - 1  # Reverse order for better display
-            y_positions[activity] = y_pos
+        # Merge all activities into one timeline - ABSOLUTELY NO OVERLAPPING
+        # Sort all data by timestamp
+        all_data = df_to_plot.sort_values('timestamp').copy()
+        
+        # Create activity ranges on a single line
+        y_pos = 0  # Single line at y=0
+        ranges = []
+        
+        # Get all unique timestamps and create non-overlapping segments
+        unique_times = sorted(all_data['time_of_day'].unique())
+        
+        for i, time_point in enumerate(unique_times):
+            # Get the activity at this time point
+            activity_at_time = all_data[all_data['time_of_day'] == time_point]['activity'].iloc[0]
             
-            # Get all detections for this activity
-            activity_data = df_to_plot[df_to_plot['activity'] == activity].copy()
+            # Determine start and end times for this segment
+            start_time = time_point
             
-            if len(activity_data) > 0:
-                # Group consecutive detections into ranges
-                activity_data = activity_data.sort_values('timestamp')
-                ranges = []
-                current_start = None
-                current_end = None
-                
-                for _, row in activity_data.iterrows():
-                    time_of_day = row['time_of_day']
-                    
-                    if current_start is None:
-                        current_start = time_of_day
-                        current_end = time_of_day
-                    elif time_of_day - current_end <= 0.5:  # Within 30 minutes, consider continuous
-                        current_end = time_of_day
-                    else:
-                        # Gap detected, save current range and start new one
-                        ranges.append((current_start, current_end))
-                        current_start = time_of_day
-                        current_end = time_of_day
-                
-                # Don't forget the last range
-                if current_start is not None:
-                    ranges.append((current_start, current_end))
-                
-                # Plot the ranges
-                for start_time, end_time in ranges:
-                    # Ensure minimum width for visibility
-                    duration = max(end_time - start_time, 0.1)
-                    
-                    plt.barh(y_pos, duration, left=start_time, height=0.8, 
-                            color=activity_colors[activity], alpha=0.7, 
-                            edgecolor='black', linewidth=0.5)
+            if i < len(unique_times) - 1:
+                # Not the last time point - end at the next time point
+                end_time = unique_times[i + 1]
+            else:
+                # Last time point - extend slightly for visibility
+                end_time = time_point + 0.01  # 36 seconds
+        
+            ranges.append((start_time, end_time, activity_at_time))
+        
+        # Plot all ranges on a single line
+        for start_time, end_time, activity in ranges:
+            # Use exact duration - no minimum width to avoid overlaps
+            duration = end_time - start_time
+            
+            # Only plot if duration is positive
+            if duration > 0:
+                plt.barh(y_pos, duration, left=start_time, height=0.8, 
+                        color=activity_colors[activity], alpha=0.7, 
+                        edgecolor='black', linewidth=0.5)
         
         # Customize the plot
         plt.xlabel('Hour of Day (24h)', fontsize=12)
@@ -171,8 +166,9 @@ class HamsterDatabaseAnalyzer:
         else:
             plt.title('Hamster Activity Timeline (All Data)', fontsize=14, fontweight='bold')
         
-        # Set y-axis labels
-        plt.yticks(range(len(activities)), activities)
+        # Set y-axis for single line
+        plt.ylim(-0.5, 0.5)
+        plt.yticks([0], ['Activities'])
         
         # Set x-axis to show 24-hour format
         plt.xlim(0, 24)
@@ -181,7 +177,7 @@ class HamsterDatabaseAnalyzer:
         # Add grid for better readability
         plt.grid(True, alpha=0.3, axis='x')
         
-        # Add legend
+        # Add legend showing all activities
         legend_elements = [plt.Rectangle((0, 0), 1, 1, facecolor=activity_colors[activity], 
                                        alpha=0.7, edgecolor='black', label=activity) 
                           for activity in activities]
