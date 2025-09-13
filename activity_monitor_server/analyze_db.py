@@ -172,7 +172,7 @@ class HamsterDatabaseAnalyzer:
             # Only plot if duration is positive
             if duration > 0:
                 plt.barh(y_pos, duration, left=start_time, height=0.8, 
-                        color=activity_colors[activity], alpha=0.7, 
+                        color=activity_colors[activity], 
                         edgecolor='black', linewidth=0.5)
         
         # Customize the plot
@@ -199,7 +199,7 @@ class HamsterDatabaseAnalyzer:
         
         # Add legend showing all activities
         legend_elements = [plt.Rectangle((0, 0), 1, 1, facecolor=activity_colors[activity], 
-                                       alpha=0.7, edgecolor='black', label=activity) 
+                                       edgecolor='black', label=activity) 
                           for activity in activities]
         plt.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1.0, 1.0))
         
