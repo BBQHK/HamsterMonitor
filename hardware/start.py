@@ -320,7 +320,7 @@ def generate_frames(camera_index):
                 texts.append(f"Activity: {last_activity_result['activity']} ({last_activity_result['activity_probability']*100:.1f}%)")
             
             # Add text overlay to frame
-            if camera_index != 0:
+            if camera_index != 4:
                 add_text_overlay(frame, texts)
             
             frame_count += 1
@@ -419,8 +419,8 @@ if __name__ == '__main__':
         sensor_thread.start()
         
         # Start the detection result polling thread
-        # detection_polling_thread = threading.Thread(target=poll_detection_results, daemon=True)
-        # detection_polling_thread.start()
+        detection_polling_thread = threading.Thread(target=poll_detection_results, daemon=True)
+        detection_polling_thread.start()
         
         app.run(host='0.0.0.0', port=8081, threaded=True)
     finally:

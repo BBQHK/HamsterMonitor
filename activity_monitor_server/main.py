@@ -90,7 +90,7 @@ def monitor_camera_stream():
     while True:
         try:
             # Connect to the streaming feed
-            response = requests.get(f"{SERVER_URL}/camera0", stream=True, timeout=10)
+            response = requests.get(f"{SERVER_URL}/camera4", stream=True, timeout=10)
             if response.status_code == 200:
                 print("Connected to camera stream")
                 
