@@ -401,7 +401,7 @@ def get_status():
         'cage_temperature': temperature,
         'cage_humidity': humidity,
         'air_quality': air_quality,
-        'air_quality_ppm': air_quality_ppm,
+        'cage_ammonia_level': air_quality_ppm,
         'hamster_activity': last_activity_result['activity'],
         'hamster_activity_probability': last_activity_result['activity_probability']
     }
