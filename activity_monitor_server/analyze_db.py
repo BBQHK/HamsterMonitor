@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
 """
-Hamster Activity Database Analyzer
-A simple script to analyze and visualize data from the hamster_activity.db file
+Hamster Activity Timeline Analyzer
+A simple script to show 24-hour activity timeline from the hamster_activity.db file
 """
 
 import sqlite3
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-from datetime import datetime, timedelta
 import numpy as np
-import seaborn as sns
 from pathlib import Path
+from datetime import datetime, date
 
 class HamsterDatabaseAnalyzer:
     def __init__(self, db_path: str = "hamster_activity.db"):
@@ -41,259 +39,205 @@ class HamsterDatabaseAnalyzer:
             return False
         return True
     
+    def get_available_dates(self):
+        """Get list of available dates in the database."""
+        if self.df is None:
+            print("No data loaded. Call connect() first.")
+            return []
+        
+        dates = sorted(self.df['timestamp'].dt.date.unique())
+        return dates
+    
+    def filter_by_date(self, target_date):
+        """Filter data by specific date."""
+        if self.df is None:
+            print("No data loaded. Call connect() first.")
+            return None
+        
+        if isinstance(target_date, str):
+            target_date = datetime.strptime(target_date, '%Y-%m-%d').date()
+        
+        filtered_df = self.df[self.df['timestamp'].dt.date == target_date].copy()
+        return filtered_df
+    
     def close(self):
         """Close the database connection."""
         if self.conn:
             self.conn.close()
             print("Database connection closed")
     
-    def basic_stats(self):
+    def basic_stats(self, df=None):
         """Display basic statistics about the data."""
-        if self.df is None:
+        data_to_use = df if df is not None else self.df
+        
+        if data_to_use is None:
             print("No data loaded. Call connect() first.")
             return
         
         print("\n=== BASIC STATISTICS ===")
-        print(f"Total records: {len(self.df)}")
-        print(f"Date range: {self.df['timestamp'].min()} to {self.df['timestamp'].max()}")
-        print(f"Duration: {self.df['timestamp'].max() - self.df['timestamp'].min()}")
+        print(f"Total records: {len(data_to_use)}")
+        print(f"Date range: {data_to_use['timestamp'].min()} to {data_to_use['timestamp'].max()}")
         
         print("\nActivity distribution:")
-        activity_counts = self.df['activity'].value_counts()
+        activity_counts = data_to_use['activity'].value_counts()
         for activity, count in activity_counts.items():
-            percentage = (count / len(self.df)) * 100
+            percentage = (count / len(data_to_use)) * 100
             print(f"  {activity}: {count} ({percentage:.1f}%)")
-        
-        print(f"\nAverage confidence: {self.df['confidence'].mean():.3f}")
-        print(f"Average motion intensity: {self.df['motion_intensity'].mean():.3f}")
     
-    def plot_activity_timeline(self, figsize=(15, 8)):
-        """Plot activity timeline over time."""
+    def plot_24h_activity_timeline(self, figsize=(16, 8), target_date=None):
+        """Plot a single timeline chart showing activity detection ranges throughout a 24-hour day."""
         if self.df is None:
             print("No data loaded. Call connect() first.")
             return
         
-        plt.figure(figsize=figsize)
+        # Filter data by date if specified
+        if target_date is not None:
+            df_to_plot = self.filter_by_date(target_date)
+            if df_to_plot is None or len(df_to_plot) == 0:
+                print(f"No data found for date: {target_date}")
+                return
+        else:
+            df_to_plot = self.df
         
-        # Create a scatter plot of activities over time
-        activities = self.df['activity'].unique()
+        # Extract time components
+        df_to_plot = df_to_plot.copy()
+        df_to_plot['hour'] = df_to_plot['timestamp'].dt.hour
+        df_to_plot['minute'] = df_to_plot['timestamp'].dt.minute
+        df_to_plot['time_of_day'] = df_to_plot['timestamp'].dt.hour + df_to_plot['timestamp'].dt.minute / 60.0
+        
+        # Get unique activities and assign colors
+        activities = sorted(df_to_plot['activity'].unique())
+        if len(activities) == 0:
+            print("No activities found in the selected data.")
+            return
+            
         colors = plt.cm.Set3(np.linspace(0, 1, len(activities)))
+        activity_colors = {activity: colors[i] for i, activity in enumerate(activities)}
         
+        # Create the plot
+        plt.figure(figsize=figsize)
+        
+        # Plot each activity as horizontal bars/ranges
+        y_positions = {}
         for i, activity in enumerate(activities):
-            mask = self.df['activity'] == activity
-            plt.scatter(self.df[mask]['timestamp'], 
-                       [i] * mask.sum(), 
-                       c=[colors[i]], 
-                       label=activity, 
-                       alpha=0.7, 
-                       s=50)
+            y_pos = len(activities) - i - 1  # Reverse order for better display
+            y_positions[activity] = y_pos
+            
+            # Get all detections for this activity
+            activity_data = df_to_plot[df_to_plot['activity'] == activity].copy()
+            
+            if len(activity_data) > 0:
+                # Group consecutive detections into ranges
+                activity_data = activity_data.sort_values('timestamp')
+                ranges = []
+                current_start = None
+                current_end = None
+                
+                for _, row in activity_data.iterrows():
+                    time_of_day = row['time_of_day']
+                    
+                    if current_start is None:
+                        current_start = time_of_day
+                        current_end = time_of_day
+                    elif time_of_day - current_end <= 0.5:  # Within 30 minutes, consider continuous
+                        current_end = time_of_day
+                    else:
+                        # Gap detected, save current range and start new one
+                        ranges.append((current_start, current_end))
+                        current_start = time_of_day
+                        current_end = time_of_day
+                
+                # Don't forget the last range
+                if current_start is not None:
+                    ranges.append((current_start, current_end))
+                
+                # Plot the ranges
+                for start_time, end_time in ranges:
+                    # Ensure minimum width for visibility
+                    duration = max(end_time - start_time, 0.1)
+                    
+                    plt.barh(y_pos, duration, left=start_time, height=0.8, 
+                            color=activity_colors[activity], alpha=0.7, 
+                            edgecolor='black', linewidth=0.5)
         
+        # Customize the plot
+        plt.xlabel('Hour of Day (24h)', fontsize=12)
+        plt.ylabel('Activity Type', fontsize=12)
+        
+        # Set title based on whether date is filtered
+        if target_date is not None:
+            title_date = target_date if isinstance(target_date, str) else target_date.strftime('%Y-%m-%d')
+            plt.title(f'Hamster Activity Timeline - {title_date}', fontsize=14, fontweight='bold')
+        else:
+            plt.title('Hamster Activity Timeline (All Data)', fontsize=14, fontweight='bold')
+        
+        # Set y-axis labels
         plt.yticks(range(len(activities)), activities)
-        plt.xlabel('Time')
-        plt.ylabel('Activity')
-        plt.title('Hamster Activity Timeline')
-        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-        plt.grid(True, alpha=0.3)
-        plt.tight_layout()
-        plt.show()
-    
-    def plot_confidence_distribution(self, figsize=(12, 8)):
-        """Plot confidence distribution by activity."""
-        if self.df is None:
-            print("No data loaded. Call connect() first.")
-            return
         
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+        # Set x-axis to show 24-hour format
+        plt.xlim(0, 24)
+        plt.xticks(range(0, 25, 2), [f'{h:02d}:00' for h in range(0, 25, 2)])
         
-        # Box plot of confidence by activity
-        self.df.boxplot(column='confidence', by='activity', ax=ax1)
-        ax1.set_title('Confidence Distribution by Activity')
-        ax1.set_xlabel('Activity')
-        ax1.set_ylabel('Confidence')
+        # Add grid for better readability
+        plt.grid(True, alpha=0.3, axis='x')
         
-        # Histogram of overall confidence
-        ax2.hist(self.df['confidence'], bins=30, alpha=0.7, edgecolor='black')
-        ax2.set_title('Overall Confidence Distribution')
-        ax2.set_xlabel('Confidence')
-        ax2.set_ylabel('Frequency')
-        ax2.axvline(self.df['confidence'].mean(), color='red', linestyle='--', 
-                    label=f'Mean: {self.df["confidence"].mean():.3f}')
-        ax2.legend()
+        # Add legend
+        legend_elements = [plt.Rectangle((0, 0), 1, 1, facecolor=activity_colors[activity], 
+                                       alpha=0.7, edgecolor='black', label=activity) 
+                          for activity in activities]
+        plt.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1.0, 1.0))
+        
+        # Add time period labels
+        plt.axvspan(0, 6, alpha=0.1, color='blue', label='Night')
+        plt.axvspan(6, 12, alpha=0.1, color='yellow', label='Morning')
+        plt.axvspan(12, 18, alpha=0.1, color='orange', label='Afternoon')
+        plt.axvspan(18, 24, alpha=0.1, color='purple', label='Evening')
         
         plt.tight_layout()
         plt.show()
-    
-    def plot_probability_heatmap(self, figsize=(10, 8)):
-        """Plot probability heatmap for different activities."""
-        if self.df is None:
-            print("No data loaded. Call connect() first.")
-            return
         
-        # Get probability columns
-        prob_cols = ['running_prob', 'eating_prob', 'drinking_prob', 'resting_prob', 'exploring_prob']
-        
-        # Calculate average probabilities by activity
-        prob_data = []
-        activities = self.df['activity'].unique()
-        
+        # Print summary statistics
+        print("\n=== 24-HOUR ACTIVITY SUMMARY ===")
         for activity in activities:
-            mask = self.df['activity'] == activity
-            avg_probs = self.df[mask][prob_cols].mean()
-            prob_data.append(avg_probs.values)
-        
-        # Create heatmap
-        plt.figure(figsize=figsize)
-        sns.heatmap(prob_data, 
-                    xticklabels=[col.replace('_prob', '').title() for col in prob_cols],
-                    yticklabels=activities,
-                    annot=True, 
-                    fmt='.3f',
-                    cmap='YlOrRd')
-        plt.title('Average Activity Probabilities by Detected Activity')
-        plt.xlabel('Activity Type')
-        plt.ylabel('Detected Activity')
-        plt.tight_layout()
-        plt.show()
+            activity_data = df_to_plot[df_to_plot['activity'] == activity]
+            total_detections = len(activity_data)
+            if total_detections > 0:
+                avg_time = activity_data['time_of_day'].mean()
+                std_time = activity_data['time_of_day'].std()
+                print(f"{activity}: {total_detections} detections, avg time: {avg_time:.1f}h ± {std_time:.1f}h")
     
-    def plot_motion_analysis(self, figsize=(15, 10)):
-        """Plot motion intensity analysis."""
-        if self.df is None:
-            print("No data loaded. Call connect() first.")
-            return
-        
-        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=figsize)
-        
-        # Motion intensity over time
-        ax1.plot(self.df['timestamp'], self.df['motion_intensity'], alpha=0.7)
-        ax1.set_title('Motion Intensity Over Time')
-        ax1.set_xlabel('Time')
-        ax1.set_ylabel('Motion Intensity')
-        ax1.grid(True, alpha=0.3)
-        
-        # Motion intensity by activity
-        self.df.boxplot(column='motion_intensity', by='activity', ax=ax2)
-        ax2.set_title('Motion Intensity by Activity')
-        ax2.set_xlabel('Activity')
-        ax2.set_ylabel('Motion Intensity')
-        
-        # Motion intensity distribution
-        ax3.hist(self.df['motion_intensity'], bins=30, alpha=0.7, edgecolor='black')
-        ax3.set_title('Motion Intensity Distribution')
-        ax3.set_xlabel('Motion Intensity')
-        ax3.set_ylabel('Frequency')
-        ax3.axvline(self.df['motion_intensity'].mean(), color='red', linestyle='--',
-                    label=f'Mean: {self.df["motion_intensity"].mean():.3f}')
-        ax3.legend()
-        
-        # Motion vs Confidence scatter
-        ax4.scatter(self.df['motion_intensity'], self.df['confidence'], alpha=0.6)
-        ax4.set_title('Motion Intensity vs Confidence')
-        ax4.set_xlabel('Motion Intensity')
-        ax4.set_ylabel('Confidence')
-        ax4.grid(True, alpha=0.3)
-        
-        plt.tight_layout()
-        plt.show()
-    
-    def plot_hourly_activity(self, figsize=(12, 8)):
-        """Plot activity patterns by hour of day."""
-        if self.df is None:
-            print("No data loaded. Call connect() first.")
-            return
-        
-        # Extract hour from timestamp
-        self.df['hour'] = self.df['timestamp'].dt.hour
-        
-        plt.figure(figsize=figsize)
-        
-        # Count activities by hour
-        hourly_activity = self.df.groupby(['hour', 'activity']).size().unstack(fill_value=0)
-        
-        # Plot stacked bar chart
-        hourly_activity.plot(kind='bar', stacked=True, ax=plt.gca())
-        plt.title('Activity Patterns by Hour of Day')
-        plt.xlabel('Hour of Day')
-        plt.ylabel('Number of Detections')
-        plt.legend(title='Activity', bbox_to_anchor=(1.05, 1), loc='upper left')
-        plt.xticks(rotation=0)
-        plt.grid(True, alpha=0.3)
-        plt.tight_layout()
-        plt.show()
-    
-    def plot_daily_summary(self, figsize=(15, 10)):
-        """Plot daily activity summary."""
-        if self.df is None:
-            print("No data loaded. Call connect() first.")
-            return
-        
-        # Extract date from timestamp
-        self.df['date'] = self.df['timestamp'].dt.date
-        
-        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=figsize)
-        
-        # Daily activity counts
-        daily_counts = self.df.groupby('date').size()
-        ax1.plot(daily_counts.index, daily_counts.values, marker='o')
-        ax1.set_title('Daily Activity Counts')
-        ax1.set_xlabel('Date')
-        ax1.set_ylabel('Number of Detections')
-        ax1.tick_params(axis='x', rotation=45)
-        ax1.grid(True, alpha=0.3)
-        
-        # Daily activity distribution
-        daily_activity = self.df.groupby(['date', 'activity']).size().unstack(fill_value=0)
-        daily_activity.plot(kind='bar', stacked=True, ax=ax2)
-        ax2.set_title('Daily Activity Distribution')
-        ax2.set_xlabel('Date')
-        ax2.set_ylabel('Number of Detections')
-        ax2.tick_params(axis='x', rotation=45)
-        ax2.legend(title='Activity', bbox_to_anchor=(1.05, 1), loc='upper left')
-        
-        # Daily average confidence
-        daily_confidence = self.df.groupby('date')['confidence'].mean()
-        ax3.plot(daily_confidence.index, daily_confidence.values, marker='o', color='orange')
-        ax3.set_title('Daily Average Confidence')
-        ax3.set_xlabel('Date')
-        ax3.set_ylabel('Average Confidence')
-        ax3.tick_params(axis='x', rotation=45)
-        ax3.grid(True, alpha=0.3)
-        
-        # Daily average motion intensity
-        daily_motion = self.df.groupby('date')['motion_intensity'].mean()
-        ax4.plot(daily_motion.index, daily_motion.values, marker='o', color='green')
-        ax4.set_title('Daily Average Motion Intensity')
-        ax4.set_xlabel('Date')
-        ax4.set_ylabel('Average Motion Intensity')
-        ax4.tick_params(axis='x', rotation=45)
-        ax4.grid(True, alpha=0.3)
-        
-        plt.tight_layout()
-        plt.show()
-    
-    def run_full_analysis(self):
-        """Run all analysis plots."""
+    def run_analysis(self, target_date=None):
+        """Run the 24-hour timeline analysis."""
         if not self.connect():
             return
         
-        print("Starting full analysis...")
+        print("Starting 24-hour timeline analysis...")
+        
+        # Show available dates
+        available_dates = self.get_available_dates()
+        print(f"\nAvailable dates: {[d.strftime('%Y-%m-%d') for d in available_dates]}")
         
         # Basic statistics
-        self.basic_stats()
+        if target_date is not None:
+            filtered_df = self.filter_by_date(target_date)
+            if filtered_df is not None and len(filtered_df) > 0:
+                print(f"\nData for {target_date}:")
+                self.basic_stats(filtered_df)
+            else:
+                print(f"No data found for date: {target_date}")
+                return
+        else:
+            self.basic_stats()
         
-        # Generate all plots
-        self.plot_activity_timeline()
-        self.plot_confidence_distribution()
-        self.plot_probability_heatmap()
-        self.plot_motion_analysis()
-        self.plot_hourly_activity()
-        self.plot_daily_summary()
+        # Generate the timeline plot
+        self.plot_24h_activity_timeline(target_date=target_date)
         
         self.close()
         print("Analysis complete!")
 
 def main():
     """Main function to run the analyzer."""
-    print("Hamster Activity Database Analyzer")
+    print("Hamster Activity Timeline Analyzer")
     print("=" * 40)
     
     # Check if database exists
@@ -303,11 +247,51 @@ def main():
         print("Please make sure the database file exists in the current directory.")
         return
     
-    # Create analyzer and run analysis
+    # Create analyzer and connect to get available dates
     analyzer = HamsterDatabaseAnalyzer(db_path)
     
     try:
-        analyzer.run_full_analysis()
+        # Connect to get available dates
+        if not analyzer.connect():
+            return
+        
+        available_dates = analyzer.get_available_dates()
+        analyzer.close()
+        
+        if not available_dates:
+            print("No data found in the database.")
+            return
+        
+        # Ask user for date selection
+        print(f"\nAvailable dates: {[d.strftime('%Y-%m-%d') for d in available_dates]}")
+        print("\nOptions:")
+        print("1. Press Enter to show all data combined")
+        print("2. Enter a specific date (YYYY-MM-DD format)")
+        print("3. Type 'latest' to show the most recent date")
+        
+        user_input = input("\nEnter your choice: ").strip().lower()
+        
+        target_date = None
+        if user_input == 'latest':
+            target_date = available_dates[-1]
+            print(f"Selected latest date: {target_date}")
+        elif user_input and user_input != '':
+            try:
+                # Try to parse the date
+                parsed_date = datetime.strptime(user_input, '%Y-%m-%d').date()
+                if parsed_date in available_dates:
+                    target_date = parsed_date
+                    print(f"Selected date: {target_date}")
+                else:
+                    print(f"Date {user_input} not found in available dates.")
+                    print("Showing all data instead.")
+            except ValueError:
+                print(f"Invalid date format: {user_input}")
+                print("Please use YYYY-MM-DD format. Showing all data instead.")
+        
+        # Run analysis with selected date
+        analyzer.run_analysis(target_date)
+        
     except KeyboardInterrupt:
         print("\nAnalysis interrupted by user.")
     except Exception as e:
