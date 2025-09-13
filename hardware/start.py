@@ -403,7 +403,7 @@ def get_status():
         'air_quality': air_quality,
         'cage_ammonia_level': air_quality_ppm,
         'hamster_activity': last_activity_result['activity'],
-        'hamster_activity_probability': last_activity_result['activity_probability']
+        # 'hamster_activity_probability': last_activity_result['activity_probability']
     }
     
     return json.dumps(status, indent=2)
