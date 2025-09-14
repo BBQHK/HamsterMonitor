@@ -84,182 +84,7 @@ class HamsterDatabaseAnalyzer:
             percentage = (count / len(data_to_use)) * 100
             print(f"  {activity}: {count} ({percentage:.1f}%)")
     
-    def detect_abnormal_activities(self, df=None, sensitivity=2.0):
-        """
-        Detect abnormal activities based on statistical analysis.
-        
-        Parameters:
-        - df: DataFrame to analyze (uses self.df if None)
-        - sensitivity: Standard deviation multiplier for anomaly detection (default 2.0)
-        
-        Returns:
-        - Dictionary with abnormal activity information
-        """
-        data_to_use = df if df is not None else self.df
-        
-        if data_to_use is None:
-            print("No data loaded. Call connect() first.")
-            return None
-        
-        print(f"\n=== ABNORMAL ACTIVITY DETECTION (sensitivity: {sensitivity}σ) ===")
-        
-        # Add time components for analysis
-        analysis_df = data_to_use.copy()
-        analysis_df['hour'] = analysis_df['timestamp'].dt.hour
-        analysis_df['minute'] = analysis_df['timestamp'].dt.minute
-        analysis_df['time_of_day'] = analysis_df['timestamp'].dt.hour + analysis_df['timestamp'].dt.minute / 60.0
-        
-        abnormal_activities = {
-            'unusual_timing': [],
-            'excessive_duration': [],
-            'missing_activities': [],
-            'frequency_anomalies': []
-        }
-        
-        # 1. Detect unusual timing patterns
-        print("\n1. UNUSUAL TIMING PATTERNS:")
-        for activity in analysis_df['activity'].unique():
-            activity_data = analysis_df[analysis_df['activity'] == activity]
-            
-            if len(activity_data) < 3:  # Need at least 3 data points for statistical analysis
-                continue
-                
-            # Calculate normal time range (mean ± sensitivity * std)
-            mean_time = activity_data['time_of_day'].mean()
-            std_time = activity_data['time_of_day'].std()
-            
-            if std_time > 0:  # Avoid division by zero
-                lower_bound = mean_time - sensitivity * std_time
-                upper_bound = mean_time + sensitivity * std_time
-                
-                # Find activities outside normal time range
-                unusual_times = activity_data[
-                    (activity_data['time_of_day'] < lower_bound) | 
-                    (activity_data['time_of_day'] > upper_bound)
-                ]
-                
-                if len(unusual_times) > 0:
-                    print(f"  {activity}: {len(unusual_times)} unusual timings")
-                    for _, row in unusual_times.iterrows():
-                        time_str = f"{int(row['time_of_day']):02d}:{int((row['time_of_day'] % 1) * 60):02d}"
-                        print(f"    - {time_str} (normal range: {int(lower_bound):02d}:{int((lower_bound % 1) * 60):02d} - {int(upper_bound):02d}:{int((upper_bound % 1) * 60):02d})")
-                    
-                    abnormal_activities['unusual_timing'].extend([
-                        {
-                            'activity': activity,
-                            'timestamp': row['timestamp'],
-                            'time_of_day': row['time_of_day'],
-                            'normal_range': (lower_bound, upper_bound),
-                            'deviation': abs(row['time_of_day'] - mean_time) / std_time if std_time > 0 else 0
-                        }
-                        for _, row in unusual_times.iterrows()
-                    ])
-        
-        # 2. Detect excessive activity duration (if we have consecutive data)
-        print("\n2. ACTIVITY DURATION ANALYSIS:")
-        # Group consecutive activities and calculate durations
-        analysis_df = analysis_df.sort_values('timestamp')
-        activity_groups = []
-        current_group = []
-        
-        for _, row in analysis_df.iterrows():
-            if not current_group or current_group[-1]['activity'] == row['activity']:
-                current_group.append(row)
-            else:
-                if len(current_group) > 0:
-                    activity_groups.append(current_group)
-                current_group = [row]
-        
-        if len(current_group) > 0:
-            activity_groups.append(current_group)
-        
-        # Calculate durations and detect anomalies
-        durations_by_activity = {}
-        for group in activity_groups:
-            if len(group) < 2:
-                continue
-                
-            activity = group[0]['activity']
-            start_time = group[0]['time_of_day']
-            end_time = group[-1]['time_of_day']
-            duration = end_time - start_time
-            
-            if activity not in durations_by_activity:
-                durations_by_activity[activity] = []
-            durations_by_activity[activity].append(duration)
-        
-        for activity, durations in durations_by_activity.items():
-            if len(durations) < 3:
-                continue
-                
-            mean_duration = np.mean(durations)
-            std_duration = np.std(durations)
-            
-            if std_duration > 0:
-                threshold = mean_duration + sensitivity * std_duration
-                excessive_durations = [d for d in durations if d > threshold]
-                
-                if excessive_durations:
-                    print(f"  {activity}: {len(excessive_durations)} excessive durations")
-                    print(f"    - Normal: {mean_duration:.2f}h ± {std_duration:.2f}h")
-                    print(f"    - Excessive: {[f'{d:.2f}h' for d in excessive_durations]}")
-                    
-                    abnormal_activities['excessive_duration'].extend([
-                        {
-                            'activity': activity,
-                            'duration': duration,
-                            'normal_mean': mean_duration,
-                            'normal_std': std_duration,
-                            'deviation': (duration - mean_duration) / std_duration
-                        }
-                        for duration in excessive_durations
-                    ])
-        
-        # 3. Detect missing activities (if we have historical data)
-        print("\n3. MISSING ACTIVITY ANALYSIS:")
-        if len(analysis_df) > 0:
-            # Check if certain activities are completely missing
-            all_activities = set(analysis_df['activity'].unique())
-            
-            # Define expected activities (you can modify this list)
-            expected_activities = {'eating', 'drinking', 'exploring', 'resting', 'wheel'}
-            missing_activities = expected_activities - all_activities
-            
-            if missing_activities:
-                print(f"  Missing activities: {', '.join(missing_activities)}")
-                abnormal_activities['missing_activities'] = list(missing_activities)
-        
-        # 4. Frequency anomalies
-        print("\n4. FREQUENCY ANOMALIES:")
-        activity_counts = analysis_df['activity'].value_counts()
-        total_activities = len(analysis_df)
-        
-        for activity, count in activity_counts.items():
-            frequency = count / total_activities
-            
-            # Define normal frequency ranges (you can adjust these)
-            normal_frequencies = {
-                'eating': (0.05, 0.25),    # 5-25% of time
-                'drinking': (0.02, 0.10),   # 2-10% of time
-                'exploring': (0.10, 0.40),  # 10-40% of time
-                'resting': (0.30, 0.70),    # 30-70% of time
-                'wheel': (0.05, 0.30)       # 5-30% of time
-            }
-            
-            if activity in normal_frequencies:
-                min_freq, max_freq = normal_frequencies[activity]
-                if frequency < min_freq or frequency > max_freq:
-                    print(f"  {activity}: {frequency:.1%} frequency (normal: {min_freq:.1%}-{max_freq:.1%})")
-                    abnormal_activities['frequency_anomalies'].append({
-                        'activity': activity,
-                        'frequency': frequency,
-                        'normal_range': (min_freq, max_freq),
-                        'type': 'too_low' if frequency < min_freq else 'too_high'
-                    })
-        
-        return abnormal_activities
-    
-    def plot_24h_activity_timeline(self, figsize=(16, 8), target_date=None, show_abnormal=True):
+    def plot_24h_activity_timeline(self, figsize=(16, 8), target_date=None):
         """Plot a single timeline chart showing activity detection ranges throughout a 24-hour day."""
         if self.df is None:
             print("No data loaded. Call connect() first.")
@@ -273,11 +98,6 @@ class HamsterDatabaseAnalyzer:
                 return
         else:
             df_to_plot = self.df
-        
-        # Get abnormal activities for highlighting
-        abnormal_activities = None
-        if show_abnormal:
-            abnormal_activities = self.detect_abnormal_activities(df_to_plot, sensitivity=2.0)
         
         # Extract time components
         df_to_plot = df_to_plot.copy()
@@ -351,50 +171,9 @@ class HamsterDatabaseAnalyzer:
             
             # Only plot if duration is positive
             if duration > 0:
-                # Check if this activity period is abnormal
-                is_abnormal = False
-                abnormal_type = None
-                
-                if abnormal_activities:
-                    # Check for unusual timing
-                    for abnormal in abnormal_activities.get('unusual_timing', []):
-                        if (abnormal['activity'] == activity and 
-                            start_time <= abnormal['time_of_day'] <= end_time):
-                            is_abnormal = True
-                            abnormal_type = 'unusual_timing'
-                            break
-                    
-                    # Check for excessive duration
-                    if not is_abnormal:
-                        for abnormal in abnormal_activities.get('excessive_duration', []):
-                            if (abnormal['activity'] == activity and 
-                                abs(duration - abnormal['duration']) < 0.01):  # Within 6 minutes
-                                is_abnormal = True
-                                abnormal_type = 'excessive_duration'
-                                break
-                
-                # Choose color and edge style based on abnormality
-                if is_abnormal:
-                    # Use red edge for abnormal activities
-                    edge_color = 'red'
-                    edge_width = 3
-                    # Add a subtle red overlay
-                    plt.barh(y_pos, duration, left=start_time, height=0.8, 
-                            color='red', alpha=0.3, edgecolor='none')
-                else:
-                    edge_color = 'black'
-                    edge_width = 0.5
-                
                 plt.barh(y_pos, duration, left=start_time, height=0.8, 
                         color=activity_colors[activity], 
-                        edgecolor=edge_color, linewidth=edge_width)
-                
-                # Add abnormal activity indicator
-                if is_abnormal:
-                    center_time = start_time + duration / 2
-                    plt.text(center_time, y_pos, '!', 
-                            ha='center', va='center', fontsize=16, 
-                            color='red', fontweight='bold')
+                        edgecolor='black', linewidth=0.5)
         
         # Customize the plot
         plt.xlabel('Hour of Day (24h)', fontsize=12)
@@ -422,17 +201,6 @@ class HamsterDatabaseAnalyzer:
         legend_elements = [plt.Rectangle((0, 0), 1, 1, facecolor=activity_colors[activity], 
                                        edgecolor='black', label=activity) 
                           for activity in activities]
-        
-        # Add abnormal activity indicators to legend
-        if abnormal_activities and (abnormal_activities.get('unusual_timing') or 
-                                   abnormal_activities.get('excessive_duration')):
-            legend_elements.append(plt.Rectangle((0, 0), 1, 1, facecolor='red', 
-                                               alpha=0.3, edgecolor='red', linewidth=3, 
-                                               label='Abnormal Activity'))
-            legend_elements.append(plt.Line2D([0], [0], marker='o', color='red', 
-                                            markerfacecolor='red', markersize=8, 
-                                            label='Abnormal Indicator'))
-        
         plt.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1.0, 1.0))
         
         # Add time period labels
@@ -479,18 +247,6 @@ class HamsterDatabaseAnalyzer:
         
         # Generate the timeline plot
         self.plot_24h_activity_timeline(target_date=target_date)
-        
-        # Run abnormal activity detection
-        if target_date is not None:
-            filtered_df = self.filter_by_date(target_date)
-            if filtered_df is not None and len(filtered_df) > 0:
-                print(f"\nRunning abnormal detection for {target_date}...")
-                abnormal_results = self.detect_abnormal_activities(filtered_df)
-            else:
-                print(f"No data found for abnormal detection on {target_date}")
-        else:
-            print("\nRunning abnormal detection for all data...")
-            abnormal_results = self.detect_abnormal_activities()
         
         self.close()
         print("Analysis complete!")
