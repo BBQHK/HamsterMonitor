@@ -94,7 +94,7 @@
       },
       "targets": [
         {
-          "query": "from(bucket: \"hamster\")\n  |> range(start: -6h)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"cage_status\" and r[\"_field\"] == \"cage_temperature\")\n  |> group(columns: [])\n  |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)\n  |> yield(name: \"mean\")",
+          "query": "from(bucket: \"hamster\")\n  |> range(start: -6h)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"cage_status\" and r[\"_field\"] == \"cage_temperature\")\n  |> group(columns: [])\n  |> aggregateWindow(every: 5s, fn: mean, createEmpty: false)\n  |> yield(name: \"mean\")",
           "refId": "A"
         }
       ],
@@ -173,7 +173,7 @@
       },
       "targets": [
         {
-          "query": "from(bucket: \"hamster\")\n  |> range(start: -6h)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"cage_status\" and r[\"_field\"] == \"cage_humidity\")\n  |> group(columns: [])\n  |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)\n  |> yield(name: \"mean\")",
+          "query": "from(bucket: \"hamster\")\n  |> range(start: -6h)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"cage_status\" and r[\"_field\"] == \"cage_humidity\")\n  |> group(columns: [])\n  |> aggregateWindow(every: 5s, fn: mean, createEmpty: false)\n  |> yield(name: \"mean\")",
           "refId": "A"
         }
       ],
@@ -252,7 +252,7 @@
       },
       "targets": [
         {
-          "query": "from(bucket: \"hamster\")\n  |> range(start: -6h)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"cage_status\" and r[\"_field\"] == \"cage_ammonia_level\")\n  |> group(columns: [])\n  |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)\n  |> yield(name: \"mean\")",
+          "query": "from(bucket: \"hamster\")\n  |> range(start: -6h)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"cage_status\" and r[\"_field\"] == \"cage_ammonia_level\")\n  |> group(columns: [])\n  |> aggregateWindow(every: 5s, fn: mean, createEmpty: false)\n  |> yield(name: \"mean\")",
           "refId": "A"
         }
       ],
