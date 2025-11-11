@@ -5,7 +5,6 @@ from datetime import datetime
 import json
 import os
 from ai_activity_detector import HamsterActivityDetector
-from database import HamsterDatabase
 import requests
 from io import BytesIO
 from PIL import Image
@@ -17,9 +16,6 @@ app = Flask(__name__)
 
 # Initialize AI activity detector
 activity_detector = HamsterActivityDetector("best.pt")
-
-# Initialize database for logging
-db = HamsterDatabase("hamster_activity.db")
 
 # Configuration
 SERVER_URL = "http://192.168.50.167:8081"  # URL of hamster monitoring hardware server
@@ -53,22 +49,6 @@ def process_frame_from_bytes(frame_bytes):
         else:
             activity_probability = float(activity_probs[activity])
         
-        # Log detection data to database
-        try:
-            # Get motion intensity from the detector
-            motion_intensity = activity_detector.detect_motion(frame)
-            
-            # Log the activity detection
-            db.log_activity(
-                activity=activity,
-                confidence=activity_probability,
-                all_probabilities={k: float(v) for k, v in activity_probs.items()},
-                motion_intensity=motion_intensity,
-                frame_shape=frame.shape
-            )
-        except Exception as db_error:
-            print(f"Database logging error: {db_error}")
-            
         # Prepare result
         result = {
             "activity": activity,
