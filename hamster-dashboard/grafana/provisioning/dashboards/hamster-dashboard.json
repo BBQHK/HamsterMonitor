@@ -342,6 +342,19 @@
           "refId": "A"
         }
       ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "_field": true
+            },
+            "renameByName": {
+              "_value": "Activity"
+            }
+          }
+        }
+      ],
       "title": "Activity Timeline",
       "type": "state-timeline"
     }
