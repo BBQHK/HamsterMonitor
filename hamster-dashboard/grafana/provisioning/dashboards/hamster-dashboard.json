@@ -258,6 +258,92 @@
       ],
       "title": "Ammonia Level",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "hamster-influx"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineInterpolation": "linear"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "running": {
+                  "color": "#E24D42",
+                  "text": "running"
+                },
+                "eating": {
+                  "color": "#FFA600",
+                  "text": "eating"
+                },
+                "drinking": {
+                  "color": "#1F78C1",
+                  "text": "drinking"
+                },
+                "exploring": {
+                  "color": "#A15DA3",
+                  "text": "exploring"
+                },
+                "resting": {
+                  "color": "#56A64B",
+                  "text": "resting"
+                },
+                "Unknown": {
+                  "color": "#C8C800",
+                  "text": "Unknown"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "id": 5,
+      "options": {
+        "alignValue": "left",
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "mergeValues": true,
+        "rowHeight": 0.9,
+        "showValue": "always",
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "query": "from(bucket: \"hamster\")\n  |> range(start: -6h)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"cage_status\")\n  |> keep(columns: [\"_time\", \"hamster_activity\"])\n  |> rename(columns: {hamster_activity: \"_value\"})\n  |> set(key: \"_field\", value: \"hamster_activity\")\n  |> filter(fn: (r) => exists r._value)\n  |> sort(columns: [\"_time\"])\n  |> group(columns: [])\n  |> yield(name: \"activity\")",
+          "refId": "A"
+        }
+      ],
+      "title": "Activity Timeline",
+      "type": "state-timeline"
     }
   ],
   "refresh": "5s",
