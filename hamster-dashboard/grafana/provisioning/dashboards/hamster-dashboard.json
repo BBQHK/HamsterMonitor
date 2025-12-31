@@ -60,8 +60,24 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "blue",
                 "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 18
+              },
+              {
+                "color": "green",
+                "value": 20
+              },
+              {
+                "color": "yellow",
+                "value": 26
+              },
+              {
+                "color": "orange",
+                "value": 28
               },
               {
                 "color": "red",
@@ -75,9 +91,9 @@
       },
       "gridPos": {
         "h": 9,
-        "w": 12,
+        "w": 8,
         "x": 0,
-        "y": 0
+        "y": 8
       },
       "id": 1,
       "options": {
@@ -154,9 +170,9 @@
       },
       "gridPos": {
         "h": 9,
-        "w": 12,
-        "x": 12,
-        "y": 0
+        "w": 8,
+        "x": 8,
+        "y": 8
       },
       "id": 2,
       "options": {
@@ -233,9 +249,9 @@
       },
       "gridPos": {
         "h": 9,
-        "w": 12,
-        "x": 0,
-        "y": 9
+        "w": 8,
+        "x": 16,
+        "y": 8
       },
       "id": 3,
       "options": {
@@ -258,6 +274,84 @@
       ],
       "title": "Ammonia Level",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "hamster-influx"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "max": 35,
+          "min": 15,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 18
+              },
+              {
+                "color": "green",
+                "value": 20
+              },
+              {
+                "color": "yellow",
+                "value": 26
+              },
+              {
+                "color": "orange",
+                "value": 28
+              },
+              {
+                "color": "red",
+                "value": 30
+              }
+            ]
+          },
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 4,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true,
+        "text": {
+          "titleSize": 16,
+          "valueSize": 24
+        }
+      },
+      "targets": [
+        {
+          "query": "from(bucket: \"hamster\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"cage_status\" and r[\"_field\"] == \"cage_temperature\")\n  |> group(columns: [])\n  |> last()\n  |> yield(name: \"last\")",
+          "refId": "A"
+        }
+      ],
+      "title": "Current Temperature",
+      "type": "gauge"
     },
     {
       "datasource": {
@@ -319,7 +413,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 9
+        "y": 17
       },
       "id": 5,
       "options": {
