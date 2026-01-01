@@ -42,6 +42,49 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/plugins:/var/lib/grafana/plugins:ro
 
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=admin
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      # WEBHOOK_URL will be set automatically by ngrok service
+      - WEBHOOK_URL=https://meaty-yosef-ungrimed.ngrok-free.dev
+    volumes:
+      - n8n-data:/home/node/.n8n
+    networks:
+      - n8n-network
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: ngrok
+    restart: unless-stopped
+    command:
+      - http
+      - --url=meaty-yosef-ungrimed.ngrok-free.dev
+      - n8n:5678
+    ports:
+      - "4040:4040"  # ngrok web interface
+    environment:
+      # Get your authtoken from https://dashboard.ngrok.com/get-started/your-authtoken
+      - NGROK_AUTHTOKEN=xxxxxxxxxxxxxxxxxxx
+    depends_on:
+      - n8n
+    networks:
+      - n8n-network
+
 volumes:
   influxdb-data:
   grafana-data:
+  n8n-data:
+
+networks:
+  n8n-network:
+    driver: bridge

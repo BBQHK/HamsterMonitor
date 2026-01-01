@@ -1,0 +1,8 @@
+version: "2"
+tunnels:
+  n8n:
+    proto: http
+    addr: n8n:5678
+    domain: meaty-yosef-ungrimed.ngrok-free.dev
+    inspect: true
+
