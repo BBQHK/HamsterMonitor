@@ -18,8 +18,8 @@ app = Flask(__name__)
 activity_detector = HamsterActivityDetector("best.pt")
 
 # Configuration
-SERVER_URL = "http://192.168.50.167:8081"  # URL of hamster monitoring hardware server
-PROCESSING_INTERVAL = 0.2  # Process frames every 200ms (5 FPS)
+SERVER_URL = os.getenv("HARDWARE_SERVER_URL", "http://192.168.50.167:8081")  # URL of hamster monitoring hardware server
+PROCESSING_INTERVAL = float(os.getenv("PROCESSING_INTERVAL", "0.2"))  # Process frames every 200ms (5 FPS)
 
 # Store latest detection result
 latest_detection_result = {

@@ -42,6 +42,95 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/plugins:/var/lib/grafana/plugins:ro
 
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=admin
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      # WEBHOOK_URL will be set automatically by ngrok service
+      - WEBHOOK_URL=https://meaty-yosef-ungrimed.ngrok-free.dev
+    volumes:
+      - n8n-data:/home/node/.n8n
+    networks:
+      - n8n-network
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: ngrok
+    restart: unless-stopped
+    command:
+      - http
+      - --url=meaty-yosef-ungrimed.ngrok-free.dev
+      - n8n:5678
+    ports:
+      - "4040:4040"  # ngrok web interface
+    environment:
+      # Get your authtoken from https://dashboard.ngrok.com/get-started/your-authtoken
+      - NGROK_AUTHTOKEN=2y5wDoH4QyD0wKyQryBYoNoFQ74_376mRMEh7KXmuQudXmfNt
+    depends_on:
+      - n8n
+    networks:
+      - n8n-network
+
+  activity-monitor-server:
+    build:
+      context: ../activity_monitor_server
+      dockerfile: Dockerfile
+    container_name: activity-monitor-server
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    environment:
+      # Update this to your hardware server URL
+      # If hardware server is on the same machine: use host.docker.internal:8081
+      # If hardware server is on a different machine: use the actual IP (e.g., http://192.168.50.167:8081)
+      - HARDWARE_SERVER_URL=http://192.168.50.167:8081
+      - PROCESSING_INTERVAL=0.2
+    volumes:
+      # Mount model file if it's not in the build context
+      - ../activity_monitor_server/best.pt:/app/best.pt:ro
+    extra_hosts:
+      # Add host.docker.internal for Windows/Mac Docker Desktop
+      - "host.docker.internal:host-gateway"
+    # Uncomment the following lines if you have NVIDIA GPU and want GPU acceleration
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  mcp-server:
+    build:
+      context: ../mcp_server
+      dockerfile: Dockerfile
+    container_name: mcp-server
+    restart: unless-stopped
+    ports:
+      - "8000:8000"  # FastMCP SSE transport typically uses port 8000
+    environment:
+      # Update this to your hardware server URL
+      # If hardware server is on the same machine: use host.docker.internal:8081
+      # If hardware server is on a different machine: use the actual IP (e.g., http://192.168.50.167:8081)
+      - HARDWARE_SERVER_URL=http://192.168.50.167:8081
+    extra_hosts:
+      # Add host.docker.internal for Windows/Mac Docker Desktop
+      - "host.docker.internal:host-gateway"
+
 volumes:
   influxdb-data:
   grafana-data:
+  n8n-data:
+
+networks:
+  n8n-network:
+    driver: bridge
