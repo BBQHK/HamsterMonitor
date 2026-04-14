@@ -1,0 +1,16 @@
+apiVersion: 1
+
+datasources:
+  - name: InfluxDB
+    uid: hamster-influx
+    type: influxdb
+    access: proxy
+    url: http://influxdb:8086
+    jsonData:
+      version: Flux
+      organization: home
+      defaultBucket: hamster
+    secureJsonData:
+      token: e3MnpvXH6H9UezCwU8Fc2D1pE59L1J
+    isDefault: true
+    editable: false

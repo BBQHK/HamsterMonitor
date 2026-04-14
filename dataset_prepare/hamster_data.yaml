@@ -1,0 +1,7 @@
+path: D:/code_repository/HamsterMonitor/dataset_prepare/dataset # dataset root directory
+train: images/train # train images (relative to 'path')
+val: images/val # val images (relative to 'path')
+
+# Classes
+nc: 3 # number of classes
+names: ["drinking", "eating", "running"] # class names
