@@ -204,7 +204,12 @@
      }
    }
  
-   if (!releaseDebouncePending()) {
-     sleepPowerDown();
-   }
- }
+  // While waiting for a full "magnet away" cycle, if the Hall output is still LOW
+  // we must not enter PWR_DOWN: there is no edge until the field clears, so the MCU
+  // would ignore passes until WDT (~8 s) or a lucky edge. Poll briefly instead.
+  if (waitingMagnetRelease && magnetPresent()) {
+    delayMicroseconds(200);
+  } else if (!releaseDebouncePending()) {
+    sleepPowerDown();
+  }
+}
