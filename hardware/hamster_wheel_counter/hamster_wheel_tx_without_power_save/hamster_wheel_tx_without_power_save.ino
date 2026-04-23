@@ -1,15 +1,16 @@
 /*
- * Hamster wheel counter — transmitter, no MCU sleep / no RF supply switching
+ * Hamster wheel counter — transmitter, no MCU sleep, RF switched by FR120N
  *
  * IDE: Board = Arduino Pro or Pro Mini, Processor = ATmega328P (3.3V, 8 MHz).
  *
- * Hardware: A3144 (or compatible) + FS1000A on steady power (no FR120N).
+ * Hardware: Hall (e.g. A3144 / DRV5032) + FS1000A + FR120N opto-MOSFET.
  * Wiring:
  *   - Hall D2
- *   - FS1000A DATA D7, dummy PTT D10 (NC); FS1000A VCC/GND direct to supply
+ *   - FS1000A DATA D7, dummy PTT D10 (NC)
+ *   - FS1000A VCC via FR120N switched rail; FR120N IN+ D4 (HIGH = ON), IN-/GND common
  *
  * Library: RadioHead.
- * RF: send on each new revolution and at each 24 h boundary (millis-based).
+ * RF: power FS1000A only around send; packet on each revolution and at each 24 h boundary.
  */
 
 #include <RH_ASK.h>
@@ -19,6 +20,7 @@ RH_ASK rfDriver(2000, 11, 7, 10);  // RX=11, TX=7, PTT=10 (NC)
 
 const uint8_t PIN_HALL = 2;
 const uint8_t PIN_LED = LED_BUILTIN;
+const uint8_t PIN_RF_POWER = 4;    // FR120N IN+ (HIGH = FS1000A supply ON)
 
 const unsigned long DEBOUNCE_RELEASE_US = 45000UL;
 
@@ -53,7 +55,19 @@ static bool magnetPresent() {
   return digitalRead(PIN_HALL) == LOW;
 }
 
+static void rfPowerOn() {
+  digitalWrite(PIN_RF_POWER, HIGH);
+  delay(15);   // opto + RF module settle
+}
+
+static void rfPowerOff() {
+  delay(5);
+  digitalWrite(PIN_RF_POWER, LOW);
+}
+
 static void sendCountUpdate() {
+  rfPowerOn();
+
   WheelPacket pkt;
   pkt.magic = 0xA7;
   pkt.revolutions = revolutions;
@@ -61,6 +75,8 @@ static void sendCountUpdate() {
 
   rfDriver.send((uint8_t*)&pkt, sizeof(pkt));
   rfDriver.waitPacketSent();
+
+  rfPowerOff();
 }
 
 static void applyDayRolloverFromMillis() {
@@ -106,7 +122,9 @@ static bool releaseDebouncePending() {
 void setup() {
   pinMode(PIN_HALL, INPUT_PULLUP);
   pinMode(PIN_LED, OUTPUT);
+  pinMode(PIN_RF_POWER, OUTPUT);
   digitalWrite(PIN_LED, LOW);
+  digitalWrite(PIN_RF_POWER, LOW);
 
   dayEpochStartMs = millis();
 
