@@ -1,6 +1,7 @@
 import cv2
 import threading
 import time
+from datetime import date
 
 # Camera and ROI — adjust x/y/w/h once you see the overlay on /camera0
 WHEEL_COUNTER_CAMERA = 0
@@ -36,6 +37,19 @@ class WheelCounter:
         self._was_dark = False
         self._last_count_time = 0.0
         self._initialized = False
+        self._count_date = None
+
+    def _maybe_reset_daily(self):
+        """Reset revolution count at local midnight (00:00)."""
+        today = date.today()
+        if self._count_date is None:
+            self._count_date = today
+            return
+
+        if today != self._count_date:
+            self.revolutions = 0
+            self._count_date = today
+            self._last_count_time = 0.0
 
     def _classify(self, brightness):
         """Schmitt trigger: sticky dark/light so fast passes still register one edge."""
@@ -77,6 +91,7 @@ class WheelCounter:
         brightness = float(gray.mean())
 
         with self._lock:
+            self._maybe_reset_daily()
             self.brightness = brightness
             is_dark = self._classify(brightness)
             self._update_state_machine(is_dark)
@@ -86,6 +101,7 @@ class WheelCounter:
         state = "BLACK" if self.is_dark else "WHITE"
         return {
             "revolutions": self.revolutions,
+            "count_date": self._count_date.isoformat() if self._count_date else None,
             "brightness": round(self.brightness, 1),
             "dark_threshold": self.dark_threshold,
             "light_threshold": self.light_threshold,
