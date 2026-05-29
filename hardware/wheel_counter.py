@@ -101,44 +101,14 @@ class WheelCounter:
             return self._snapshot_unlocked()
 
     def draw_overlay(self, frame, status=None):
-        """Draw ROI box and live readings on the frame."""
+        """Draw ROI box on the frame."""
         if status is None:
             status = self.get_status()
 
         x, y, w, h = status["roi"]
         is_dark = status["state"] == "BLACK"
         box_color = (0, 0, 255) if is_dark else (0, 255, 0)  # red = black, green = white
-        label_bg = (0, 0, 0)
 
         cv2.rectangle(frame, (x, y), (x + w, y + h), box_color, 2)
-
-        lines = [
-            "Wheel ROI",
-            f"Brightness: {status['brightness']:.1f} (thr {status['threshold']})",
-            f"State: {status['state']}",
-            f"Revolutions: {status['revolutions']}",
-        ]
-
-        line_height = 18
-        box_w = 280
-        box_h = line_height * len(lines) + 10
-        box_x = x
-        box_y = max(0, y - box_h - 4)
-
-        overlay = frame.copy()
-        cv2.rectangle(overlay, (box_x, box_y), (box_x + box_w, box_y + box_h), label_bg, -1)
-        cv2.addWeighted(overlay, 0.55, frame, 0.45, 0, frame)
-
-        for i, line in enumerate(lines):
-            cv2.putText(
-                frame,
-                line,
-                (box_x + 6, box_y + 16 + i * line_height),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.45,
-                (255, 255, 255),
-                1,
-                cv2.LINE_AA,
-            )
 
         return frame
