@@ -11,6 +11,7 @@ import threading
 import busio
 import adafruit_ads1x15.ads1115 as ADS
 from adafruit_ads1x15.analog_in import AnalogIn
+from wheel_counter import WheelCounter, WHEEL_COUNTER_CAMERA
 
 # Constants
 CAMERA_INDICES = [0, 2, 4]  # List of camera indices to use
@@ -72,6 +73,8 @@ app = Flask(__name__)
 
 # Dictionary to store camera objects
 cameras = {}
+
+wheel_counter = WheelCounter()
 
 # Store last activity result (shared across all cameras)
 last_activity_result = {
@@ -319,6 +322,15 @@ def generate_frames(camera_index):
             else:
                 texts.append(f"Activity: {last_activity_result['activity']} ({last_activity_result['activity_probability']*100:.1f}%)")
             
+            # Wheel counter ROI overlay (camera 0 only)
+            if camera_index == WHEEL_COUNTER_CAMERA:
+                wheel_status = wheel_counter.process_frame(frame)
+                wheel_counter.draw_overlay(frame, wheel_status)
+                texts.append(
+                    f"Wheel: {wheel_status['revolutions']} rev  "
+                    f"({wheel_status['state']}, {wheel_status['brightness']:.0f})"
+                )
+
             # Add text overlay to frame
             if camera_index != 4:
                 add_text_overlay(frame, texts)
@@ -390,6 +402,12 @@ def index():
     </html>
     """
 
+@app.route('/wheel_counter')
+def get_wheel_counter():
+    """Return current wheel counter readings from camera 0 ROI."""
+    return json.dumps(wheel_counter.get_status(), indent=2)
+
+
 @app.route('/status')
 def get_status():
     """Return current cage status including timestamp, temperature, humidity, and activity."""
@@ -403,6 +421,7 @@ def get_status():
         'air_quality': air_quality,
         'cage_ammonia_level': air_quality_ppm,
         'hamster_activity': last_activity_result['activity'],
+        'wheel_revolutions': wheel_counter.get_status()['revolutions'],
         # 'hamster_activity_probability': last_activity_result['activity_probability']
     }
     
