@@ -1,15 +1,17 @@
 import cv2
 import threading
+import time
 
 # Camera and ROI — adjust x/y/w/h once you see the overlay on /camera0
 WHEEL_COUNTER_CAMERA = 0
 WHEEL_ROI = (80, 230, 30, 30)  # x, y, width, height (640x480 frame)
 
-# Grayscale mean below this = sticker (black), above = wheel background (white)
-BRIGHTNESS_THRESHOLD = 80
+# Hysteresis: enter dark below DARK, leave dark above LIGHT (reduces threshold flicker)
+BRIGHTNESS_DARK = 80
+BRIGHTNESS_LIGHT = 95
 
-# Require this many consecutive frames in the new state before accepting a transition
-DEBOUNCE_FRAMES = 2
+# Ignore repeat counts within this window (prevents bounce without needing 2 black frames)
+MIN_COUNT_INTERVAL_S = 0.10
 
 
 class WheelCounter:
@@ -18,49 +20,46 @@ class WheelCounter:
     def __init__(
         self,
         roi=WHEEL_ROI,
-        threshold=BRIGHTNESS_THRESHOLD,
-        debounce_frames=DEBOUNCE_FRAMES,
+        dark_threshold=BRIGHTNESS_DARK,
+        light_threshold=BRIGHTNESS_LIGHT,
+        min_count_interval_s=MIN_COUNT_INTERVAL_S,
     ):
         self.roi = roi
-        self.threshold = threshold
-        self.debounce_frames = debounce_frames
+        self.dark_threshold = dark_threshold
+        self.light_threshold = light_threshold
+        self.min_count_interval_s = min_count_interval_s
 
         self._lock = threading.Lock()
         self.revolutions = 0
         self.brightness = 0.0
         self.is_dark = False
-        self._stable_state = None  # True = dark, False = light, None = not yet known
-        self._pending_state = None
-        self._pending_count = 0
+        self._was_dark = False
+        self._last_count_time = 0.0
+        self._initialized = False
 
     def _classify(self, brightness):
-        return brightness < self.threshold
+        """Schmitt trigger: sticky dark/light so fast passes still register one edge."""
+        if self.is_dark:
+            if brightness >= self.light_threshold:
+                self.is_dark = False
+        elif brightness < self.dark_threshold:
+            self.is_dark = True
+        return self.is_dark
 
     def _update_state_machine(self, is_dark):
-        if self._stable_state is None:
-            self._stable_state = is_dark
-            self._pending_state = None
-            self._pending_count = 0
+        if not self._initialized:
+            self._was_dark = is_dark
+            self._initialized = True
             return
 
-        if is_dark == self._stable_state:
-            self._pending_state = None
-            self._pending_count = 0
-            return
-
-        if is_dark != self._pending_state:
-            self._pending_state = is_dark
-            self._pending_count = 1
-        else:
-            self._pending_count += 1
-
-        if self._pending_count >= self.debounce_frames:
-            # Light -> dark: sticker entered the ROI = one revolution
-            if self._stable_state is False and self._pending_state is True:
+        # Count on rising edge: light -> dark (sticker entered ROI)
+        if is_dark and not self._was_dark:
+            now = time.monotonic()
+            if now - self._last_count_time >= self.min_count_interval_s:
                 self.revolutions += 1
-            self._stable_state = self._pending_state
-            self._pending_state = None
-            self._pending_count = 0
+                self._last_count_time = now
+
+        self._was_dark = is_dark
 
     def process_frame(self, frame):
         """Sample ROI brightness, update counter, return a copy-safe snapshot."""
@@ -76,22 +75,20 @@ class WheelCounter:
 
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
         brightness = float(gray.mean())
-        is_dark = self._classify(brightness)
 
         with self._lock:
             self.brightness = brightness
-            self.is_dark = is_dark
+            is_dark = self._classify(brightness)
             self._update_state_machine(is_dark)
             return self._snapshot_unlocked()
 
     def _snapshot_unlocked(self):
         state = "BLACK" if self.is_dark else "WHITE"
-        if self._stable_state is None:
-            state = "CALIBRATING"
         return {
             "revolutions": self.revolutions,
             "brightness": round(self.brightness, 1),
-            "threshold": self.threshold,
+            "dark_threshold": self.dark_threshold,
+            "light_threshold": self.light_threshold,
             "state": state,
             "roi": self.roi,
         }
