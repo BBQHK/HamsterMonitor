@@ -3,7 +3,7 @@ import threading
 
 # Camera and ROI — adjust x/y/w/h once you see the overlay on /camera0
 WHEEL_COUNTER_CAMERA = 0
-WHEEL_ROI = (260, 180, 100, 80)  # x, y, width, height (640x480 frame)
+WHEEL_ROI = (285, 200, 50, 40)  # x, y, width, height (640x480 frame)
 
 # Grayscale mean below this = sticker (black), above = wheel background (white)
 BRIGHTNESS_THRESHOLD = 80
