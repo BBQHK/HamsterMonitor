@@ -4,7 +4,7 @@ import time
 
 # Camera and ROI — adjust x/y/w/h once you see the overlay on /camera0
 WHEEL_COUNTER_CAMERA = 0
-WHEEL_ROI = (80, 230, 30, 30)  # x, y, width, height (640x480 frame)
+WHEEL_ROI = (80, 230, 15, 15)  # x, y, width, height (640x480 frame)
 
 # Hysteresis: enter dark below DARK, leave dark above LIGHT (reduces threshold flicker)
 BRIGHTNESS_DARK = 80
