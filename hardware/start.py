@@ -8,6 +8,10 @@ import board
 import adafruit_dht
 import time
 import threading
+import subprocess
+import shutil
+import queue
+import os
 import busio
 import adafruit_ads1x15.ads1115 as ADS
 from adafruit_ads1x15.analog_in import AnalogIn
@@ -17,6 +21,9 @@ CAMERA_INDICES = [0, 2, 4]  # List of camera indices to use
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 FPS = 15
+H264_CODEC = os.getenv("H264_CODEC", "libx264")
+H264_PRESET = os.getenv("H264_PRESET", "ultrafast")
+H264_CRF = os.getenv("H264_CRF", "28")
 API_URL = "http://192.168.50.99:8082"  # URL of activity monitor server API
 DETECTION_RESULT_URL = f"{API_URL}/detection_result"  # URL for getting detection results
 FRAME_SKIP = 3  # Process every 3rd frame
@@ -286,63 +293,143 @@ def poll_detection_results():
             
         time.sleep(0.5)  # Poll every 500ms
 
-def generate_frames(camera_index):
-    """Generate video frames from specified camera."""
+def prepare_stream_frame(camera_index, frame):
+    """Apply sensor/activity overlays before encoding."""
+    try:
+        current_time = get_current_timestamp()
+        temperature, humidity, air_quality, air_quality_ppm = read_sensors()
+
+        texts = [
+            f"Time: {current_time}",
+            f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%",
+            f"Air Quality: {air_quality} ({air_quality_ppm:.1f} PPM)"
+        ]
+
+        if api_error_count >= api_error_threshold:
+            texts.append("Activity: API Unavailable")
+        elif last_activity_result['activity'] == "Unknown":
+            texts.append("Activity: Unknown")
+        else:
+            texts.append(
+                f"Activity: {last_activity_result['activity']} "
+                f"({last_activity_result['activity_probability']*100:.1f}%)"
+            )
+
+        if camera_index != 4:
+            add_text_overlay(frame, texts)
+    except Exception as e:
+        print(f"Error processing frame: {e}")
+        cv2.putText(
+            frame, f"Error: {str(e)}", (50, FRAME_HEIGHT // 2),
+            FONT, FONT_SCALE, TEXT_COLOR, FONT_THICKNESS
+        )
+    return frame
+
+def build_ffmpeg_command():
+    """Build ffmpeg command for H.264 MPEG-TS streaming from raw BGR frames."""
+    return [
+        'ffmpeg',
+        '-loglevel', 'error',
+        '-f', 'rawvideo',
+        '-pix_fmt', 'bgr24',
+        '-s', f'{FRAME_WIDTH}x{FRAME_HEIGHT}',
+        '-r', str(FPS),
+        '-i', 'pipe:0',
+        '-an',
+        '-c:v', H264_CODEC,
+        '-preset', H264_PRESET,
+        '-tune', 'zerolatency',
+        '-crf', H264_CRF,
+        '-g', str(FPS),
+        '-pix_fmt', 'yuv420p',
+        '-f', 'mpegts',
+        'pipe:1',
+    ]
+
+def generate_h264_stream(camera_index):
+    """Encode camera frames to H.264 and stream as MPEG-TS."""
     camera = get_camera(camera_index)
     if camera is None:
         return
-    
-    frame_count = 0
-    
-    while True:
-        success, frame = camera.read()
-        if not success:
-            break
 
+    if shutil.which('ffmpeg') is None:
+        print("ffmpeg not found; install ffmpeg to enable H.264 streaming")
+        return
+
+    proc = subprocess.Popen(
+        build_ffmpeg_command(),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    stop_event = threading.Event()
+    output_queue = queue.Queue(maxsize=64)
+    stream_end = object()
+
+    def read_encoded_output():
         try:
-            # Get local readings
-            current_time = get_current_timestamp()
-            temperature, humidity, air_quality, air_quality_ppm = read_sensors()
-            
-            # Use the shared activity result for overlay
-            texts = [
-                f"Time: {current_time}",
-                f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%",
-                f"Air Quality: {air_quality} ({air_quality_ppm:.1f} PPM)"
-            ]
-            
-            # Show activity with probability only if it's not Unknown and API is working
-            if api_error_count >= api_error_threshold:
-                texts.append("Activity: API Unavailable")
-            elif last_activity_result['activity'] == "Unknown":
-                texts.append("Activity: Unknown")
-            else:
-                texts.append(f"Activity: {last_activity_result['activity']} ({last_activity_result['activity_probability']*100:.1f}%)")
-            
-            # Add text overlay to frame
-            if camera_index != 4:
-                add_text_overlay(frame, texts)
-            
-            frame_count += 1
-            
-        except Exception as e:
-            print(f"Error processing frame: {e}")
-            # Add error message to frame
-            cv2.putText(frame, f"Error: {str(e)}", (50, FRAME_HEIGHT//2), 
-                       FONT, FONT_SCALE, TEXT_COLOR, FONT_THICKNESS)
+            while not stop_event.is_set():
+                chunk = proc.stdout.read(65536)
+                if not chunk:
+                    break
+                output_queue.put(chunk)
+        finally:
+            output_queue.put(stream_end)
 
-        # Encode processed frame as JPEG for MJPEG streaming
-        ret, buffer = cv2.imencode('.jpg', frame)
-        frame = buffer.tobytes()
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+    def capture_frames():
+        frame_interval = 1.0 / FPS
+        next_frame_time = time.monotonic()
+        try:
+            while not stop_event.is_set():
+                success, frame = camera.read()
+                if not success:
+                    break
+                frame = prepare_stream_frame(camera_index, frame)
+                proc.stdin.write(frame.tobytes())
+                next_frame_time += frame_interval
+                delay = next_frame_time - time.monotonic()
+                if delay > 0:
+                    time.sleep(delay)
+        except BrokenPipeError:
+            pass
+        except Exception as e:
+            print(f"H.264 capture error for camera {camera_index}: {e}")
+        finally:
+            stop_event.set()
+            try:
+                proc.stdin.close()
+            except Exception:
+                pass
+
+    threading.Thread(target=read_encoded_output, daemon=True).start()
+    threading.Thread(target=capture_frames, daemon=True).start()
+
+    try:
+        while True:
+            chunk = output_queue.get()
+            if chunk is stream_end:
+                break
+            yield chunk
+    finally:
+        stop_event.set()
+        proc.terminate()
+        try:
+            proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            proc.kill()
 
 @app.route('/camera<int:camera_index>')
 def camera_feed(camera_index):
-    """Stream video feed from specified camera index."""
+    """Stream H.264 video (MPEG-TS) from specified camera index."""
     if camera_index not in CAMERA_INDICES:
         return "Invalid camera index", 400
-    return Response(generate_frames(camera_index), mimetype='multipart/x-mixed-replace; boundary=frame')
+    if shutil.which('ffmpeg') is None:
+        return "ffmpeg is required for H.264 streaming", 503
+    return Response(
+        generate_h264_stream(camera_index),
+        mimetype='video/mp2t',
+        headers={'Cache-Control': 'no-cache, no-store, must-revalidate'},
+    )
 
 @app.route('/')
 def index():
@@ -352,7 +439,7 @@ def index():
         camera_feed_html += f"""
                 <div class="camera-feed">
                     <h3>/camera{camera_index}</h3>
-                    <img src="/camera{camera_index}" />
+                    <video src="/camera{camera_index}" autoplay muted playsinline controls></video>
                 </div>
         """
 
@@ -378,7 +465,7 @@ def index():
                     margin: 0 0 10px 0;
                     color: #4CAF50;
                 }}
-                img {{ width: 100%; height: auto; }}
+                video {{ width: 100%; height: auto; background: #000; }}
             </style>
         </head>
         <body>

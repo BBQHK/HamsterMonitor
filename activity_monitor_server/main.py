@@ -1,13 +1,9 @@
-from flask import Flask, Response, request, jsonify
+from flask import Flask, jsonify
 import cv2
 import numpy as np
 from datetime import datetime
-import json
 import os
 from ai_activity_detector import HamsterActivityDetector
-import requests
-from io import BytesIO
-from PIL import Image
 import threading
 import time
 
@@ -29,17 +25,12 @@ latest_detection_result = {
     'timestamp': None
 }
 
-def process_frame_from_bytes(frame_bytes):
-    """Process a frame from bytes and return activity results."""
+def process_frame(frame):
+    """Process a BGR frame and return activity results."""
     try:
-        # Convert bytes to numpy array
-        nparr = np.frombuffer(frame_bytes, np.uint8)
-        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        
         if frame is None:
             return None
 
-        # Use AI to detect activity
         activity, activity_probs = activity_detector.detect_activity(frame)
         
         # Check if all probabilities are 0.0
@@ -64,61 +55,39 @@ def process_frame_from_bytes(frame_bytes):
         return None
 
 def monitor_camera_stream():
-    """Monitor the streaming feed from camera server and process frames."""
+    """Monitor the H.264 MPEG-TS feed from the hardware server."""
     global latest_detection_result
-    
+
+    stream_url = f"{SERVER_URL}/camera4"
+    last_process_time = 0.0
+
     while True:
+        cap = cv2.VideoCapture(stream_url, cv2.CAP_FFMPEG)
+        if not cap.isOpened():
+            print(f"Failed to open H.264 stream: {stream_url}")
+            time.sleep(1)
+            continue
+
+        print("Connected to H.264 camera stream")
         try:
-            # Connect to the streaming feed
-            response = requests.get(f"{SERVER_URL}/camera4", stream=True, timeout=10)
-            if response.status_code == 200:
-                print("Connected to camera stream")
-                
-                # Parse MJPEG stream
-                buffer = b''
-                frame_count = 0
-                
-                for chunk in response.iter_content(chunk_size=1024):
-                    if chunk:
-                        buffer += chunk
-                        
-                        # Look for frame boundaries
-                        while b'--frame\r\n' in buffer:
-                            # Find the start of a frame
-                            frame_start = buffer.find(b'--frame\r\n')
-                            if frame_start == -1:
-                                break
-                                
-                            # Find the end of this frame
-                            frame_end = buffer.find(b'--frame\r\n', frame_start + 10)
-                            if frame_end == -1:
-                                # Need more data
-                                break
-                                
-                            # Extract the frame data
-                            frame_data = buffer[frame_start:frame_end]
-                            
-                            # Find the JPEG data (after headers)
-                            jpeg_start = frame_data.find(b'\r\n\r\n')
-                            if jpeg_start != -1:
-                                jpeg_data = frame_data[jpeg_start + 4:]
-                                
-                                # Process every few frames to avoid overwhelming the system
-                                if frame_count % 3 == 0:  # Process every 3rd frame
-                                    result = process_frame_from_bytes(jpeg_data)
-                                    if result:
-                                        latest_detection_result.update(result)
-                                
-                                frame_count += 1
-                            
-                            # Remove processed frame from buffer
-                            buffer = buffer[frame_end:]
-                            
-        except requests.RequestException as e:
-            print(f"Error monitoring camera stream: {e}")
-            time.sleep(1)  # Wait before retrying
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    print("Lost camera stream, reconnecting...")
+                    break
+
+                now = time.time()
+                if now - last_process_time < PROCESSING_INTERVAL:
+                    continue
+                last_process_time = now
+
+                result = process_frame(frame)
+                if result:
+                    latest_detection_result.update(result)
         except Exception as e:
             print(f"Error in stream monitoring: {e}")
+        finally:
+            cap.release()
             time.sleep(1)
 
 @app.route('/detection_result')
