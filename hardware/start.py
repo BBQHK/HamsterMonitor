@@ -21,9 +21,12 @@ CAMERA_INDICES = [0, 2, 4]  # List of camera indices to use
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 FPS = 15
+# libx264 supports multiple cameras; h264_v4l2m2m is usually one session at a time.
 H264_CODEC = os.getenv("H264_CODEC", "libx264")
 H264_PRESET = os.getenv("H264_PRESET", "ultrafast")
 H264_CRF = os.getenv("H264_CRF", "28")
+H264_BITRATE = os.getenv("H264_BITRATE", "1500k")
+FRAME_BYTES = FRAME_WIDTH * FRAME_HEIGHT * 3
 API_URL = "http://192.168.50.99:8082"  # URL of activity monitor server API
 DETECTION_RESULT_URL = f"{API_URL}/detection_result"  # URL for getting detection results
 FRAME_SKIP = 3  # Process every 3rd frame
@@ -325,31 +328,59 @@ def prepare_stream_frame(camera_index, frame):
         )
     return frame
 
+def normalize_frame(frame):
+    """Ensure frame matches the size ffmpeg expects."""
+    height, width = frame.shape[:2]
+    if (width, height) != (FRAME_WIDTH, FRAME_HEIGHT):
+        frame = cv2.resize(frame, (FRAME_WIDTH, FRAME_HEIGHT))
+    if not frame.flags['C_CONTIGUOUS']:
+        frame = np.ascontiguousarray(frame)
+    return frame
+
 def build_ffmpeg_command():
-    """Build ffmpeg command for H.264 MPEG-TS streaming from raw BGR frames."""
-    return [
+    """Build ffmpeg command for fragmented MP4 H.264 (browser-friendly)."""
+    cmd = [
         'ffmpeg',
-        '-loglevel', 'error',
+        '-nostdin',
+        '-loglevel', 'warning',
         '-f', 'rawvideo',
         '-pix_fmt', 'bgr24',
         '-s', f'{FRAME_WIDTH}x{FRAME_HEIGHT}',
         '-r', str(FPS),
         '-i', 'pipe:0',
         '-an',
+        '-vf', 'format=yuv420p',
         '-c:v', H264_CODEC,
-        '-preset', H264_PRESET,
-        '-tune', 'zerolatency',
-        '-crf', H264_CRF,
-        '-g', str(FPS),
-        '-pix_fmt', 'yuv420p',
-        '-f', 'mpegts',
-        'pipe:1',
+        '-g', str(FPS * 2),
     ]
+    if H264_CODEC == 'libx264':
+        cmd.extend(['-preset', H264_PRESET, '-tune', 'zerolatency', '-crf', H264_CRF])
+    else:
+        cmd.extend(['-b:v', H264_BITRATE])
+    cmd.extend([
+        '-f', 'mp4',
+        '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
+        'pipe:1',
+    ])
+    return cmd
+
+def _drain_ffmpeg_stderr(proc, camera_index, stop_event):
+    """Read stderr so ffmpeg does not block when its buffer fills."""
+    try:
+        for line in iter(proc.stderr.readline, b''):
+            if stop_event.is_set():
+                break
+            text = line.decode(errors='replace').strip()
+            if text:
+                print(f"ffmpeg camera {camera_index}: {text}")
+    except Exception as e:
+        print(f"ffmpeg stderr reader error (camera {camera_index}): {e}")
 
 def generate_h264_stream(camera_index):
-    """Encode camera frames to H.264 and stream as MPEG-TS."""
+    """Encode camera frames to H.264 fragmented MP4."""
     camera = get_camera(camera_index)
     if camera is None:
+        print(f"No camera available for index {camera_index}")
         return
 
     if shutil.which('ffmpeg') is None:
@@ -381,17 +412,22 @@ def generate_h264_stream(camera_index):
         next_frame_time = time.monotonic()
         try:
             while not stop_event.is_set():
+                if proc.poll() is not None:
+                    print(f"ffmpeg exited early for camera {camera_index} (code {proc.returncode})")
+                    break
                 success, frame = camera.read()
                 if not success:
+                    print(f"Camera {camera_index} read failed")
                     break
                 frame = prepare_stream_frame(camera_index, frame)
+                frame = normalize_frame(frame)
                 proc.stdin.write(frame.tobytes())
                 next_frame_time += frame_interval
                 delay = next_frame_time - time.monotonic()
                 if delay > 0:
                     time.sleep(delay)
         except BrokenPipeError:
-            pass
+            print(f"ffmpeg pipe closed for camera {camera_index}")
         except Exception as e:
             print(f"H.264 capture error for camera {camera_index}: {e}")
         finally:
@@ -401,15 +437,23 @@ def generate_h264_stream(camera_index):
             except Exception:
                 pass
 
+    threading.Thread(
+        target=_drain_ffmpeg_stderr,
+        args=(proc, camera_index, stop_event),
+        daemon=True,
+    ).start()
     threading.Thread(target=read_encoded_output, daemon=True).start()
     threading.Thread(target=capture_frames, daemon=True).start()
 
     try:
         while True:
-            chunk = output_queue.get()
+            chunk = output_queue.get(timeout=10)
             if chunk is stream_end:
+                print(f"H.264 stream ended for camera {camera_index}")
                 break
             yield chunk
+    except queue.Empty:
+        print(f"H.264 stream timeout for camera {camera_index} (no encoded output)")
     finally:
         stop_event.set()
         proc.terminate()
@@ -420,15 +464,20 @@ def generate_h264_stream(camera_index):
 
 @app.route('/camera<int:camera_index>')
 def camera_feed(camera_index):
-    """Stream H.264 video (MPEG-TS) from specified camera index."""
+    """Stream H.264 video (fragmented MP4) from specified camera index."""
     if camera_index not in CAMERA_INDICES:
         return "Invalid camera index", 400
     if shutil.which('ffmpeg') is None:
         return "ffmpeg is required for H.264 streaming", 503
     return Response(
         generate_h264_stream(camera_index),
-        mimetype='video/mp2t',
-        headers={'Cache-Control': 'no-cache, no-store, must-revalidate'},
+        mimetype='video/mp4',
+        direct_passthrough=True,
+        headers={
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no',
+        },
     )
 
 @app.route('/')
@@ -439,7 +488,9 @@ def index():
         camera_feed_html += f"""
                 <div class="camera-feed">
                     <h3>/camera{camera_index}</h3>
-                    <video src="/camera{camera_index}" autoplay muted playsinline controls></video>
+                    <video autoplay muted playsinline controls>
+                        <source src="/camera{camera_index}" type="video/mp4" />
+                    </video>
                 </div>
         """
 
@@ -498,6 +549,7 @@ def get_status():
 
 if __name__ == '__main__':
     try:
+        print(f"H.264 encoder: {H264_CODEC} (override with H264_CODEC env var)")
         # Initialize all cameras before starting the server
         initialize_cameras()
         
