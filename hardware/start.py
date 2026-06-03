@@ -27,6 +27,21 @@ H264_PRESET = os.getenv("H264_PRESET", "ultrafast")
 H264_CRF = os.getenv("H264_CRF", "28")
 H264_BITRATE = os.getenv("H264_BITRATE", "1500k")
 FRAME_BYTES = FRAME_WIDTH * FRAME_HEIGHT * 3
+FFMPEG_CANDIDATES = (
+    os.getenv("FFMPEG_PATH"),
+    shutil.which("ffmpeg"),
+    "/usr/bin/ffmpeg",
+    "/usr/local/bin/ffmpeg",
+)
+
+def find_ffmpeg():
+    """Resolve ffmpeg binary (systemd often has a minimal PATH)."""
+    for candidate in FFMPEG_CANDIDATES:
+        if candidate and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+FFMPEG_EXECUTABLE = find_ffmpeg()
 API_URL = "http://192.168.50.99:8082"  # URL of activity monitor server API
 DETECTION_RESULT_URL = f"{API_URL}/detection_result"  # URL for getting detection results
 FRAME_SKIP = 3  # Process every 3rd frame
@@ -340,7 +355,7 @@ def normalize_frame(frame):
 def build_ffmpeg_command():
     """Build ffmpeg command for fragmented MP4 H.264 (browser-friendly)."""
     cmd = [
-        'ffmpeg',
+        FFMPEG_EXECUTABLE,
         '-nostdin',
         '-loglevel', 'warning',
         '-f', 'rawvideo',
@@ -383,8 +398,8 @@ def generate_h264_stream(camera_index):
         print(f"No camera available for index {camera_index}")
         return
 
-    if shutil.which('ffmpeg') is None:
-        print("ffmpeg not found; install ffmpeg to enable H.264 streaming")
+    if FFMPEG_EXECUTABLE is None:
+        print("ffmpeg not found; install ffmpeg or set FFMPEG_PATH=/usr/bin/ffmpeg")
         return
 
     proc = subprocess.Popen(
@@ -467,8 +482,8 @@ def camera_feed(camera_index):
     """Stream H.264 video (fragmented MP4) from specified camera index."""
     if camera_index not in CAMERA_INDICES:
         return "Invalid camera index", 400
-    if shutil.which('ffmpeg') is None:
-        return "ffmpeg is required for H.264 streaming", 503
+    if FFMPEG_EXECUTABLE is None:
+        return "ffmpeg is required for H.264 streaming (set FFMPEG_PATH=/usr/bin/ffmpeg)", 503
     return Response(
         generate_h264_stream(camera_index),
         mimetype='video/mp4',
@@ -549,7 +564,7 @@ def get_status():
 
 if __name__ == '__main__':
     try:
-        print(f"H.264 encoder: {H264_CODEC} (override with H264_CODEC env var)")
+        print(f"H.264 encoder: {H264_CODEC} via {FFMPEG_EXECUTABLE or 'NOT FOUND'}")
         # Initialize all cameras before starting the server
         initialize_cameras()
         

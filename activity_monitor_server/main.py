@@ -21,6 +21,20 @@ PROCESSING_INTERVAL = float(os.getenv("PROCESSING_INTERVAL", "0.2"))  # Process 
 STREAM_FRAME_WIDTH = int(os.getenv("STREAM_FRAME_WIDTH", "640"))
 STREAM_FRAME_HEIGHT = int(os.getenv("STREAM_FRAME_HEIGHT", "480"))
 FRAME_BYTES = STREAM_FRAME_WIDTH * STREAM_FRAME_HEIGHT * 3
+FFMPEG_CANDIDATES = (
+    os.getenv("FFMPEG_PATH"),
+    shutil.which("ffmpeg"),
+    "/usr/bin/ffmpeg",
+    "/usr/local/bin/ffmpeg",
+)
+
+def find_ffmpeg():
+    for candidate in FFMPEG_CANDIDATES:
+        if candidate and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+FFMPEG_EXECUTABLE = find_ffmpeg()
 
 # Store latest detection result
 latest_detection_result = {
@@ -76,26 +90,27 @@ def monitor_camera_stream():
 
     stream_url = f"{SERVER_URL}/camera4"
     last_process_time = 0.0
-    decode_cmd = [
-        'ffmpeg',
-        '-nostdin',
-        '-loglevel', 'warning',
-        '-fflags', 'nobuffer',
-        '-flags', 'low_delay',
-        '-i', stream_url,
-        '-an',
-        '-sn',
-        '-dn',
-        '-f', 'rawvideo',
-        '-pix_fmt', 'bgr24',
-        'pipe:1',
-    ]
 
     while True:
-        if shutil.which('ffmpeg') is None:
-            print("ffmpeg is required to decode the H.264 camera stream")
+        if FFMPEG_EXECUTABLE is None:
+            print("ffmpeg not found; set FFMPEG_PATH=/usr/bin/ffmpeg")
             time.sleep(5)
             continue
+
+        decode_cmd = [
+            FFMPEG_EXECUTABLE,
+            '-nostdin',
+            '-loglevel', 'warning',
+            '-fflags', 'nobuffer',
+            '-flags', 'low_delay',
+            '-i', stream_url,
+            '-an',
+            '-sn',
+            '-dn',
+            '-f', 'rawvideo',
+            '-pix_fmt', 'bgr24',
+            'pipe:1',
+        ]
 
         stop_event = threading.Event()
         proc = subprocess.Popen(

@@ -5,7 +5,8 @@ After=network.target
 [Service]
 User=king
 WorkingDirectory=/home/king/Desktop/HamsterMonitor
-Environment=PATH=/home/king/Desktop/HamsterMonitor/venv/bin:$PATH
+Environment=PATH=/home/king/Desktop/HamsterMonitor/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=FFMPEG_PATH=/usr/bin/ffmpeg
 ExecStart=/home/king/Desktop/HamsterMonitor/venv/bin/python /home/king/Desktop/HamsterMonitor/hardware/start.py
 Restart=always
 
