@@ -17,7 +17,7 @@ CAMERA_INDICES = [0, 2, 4]  # List of camera indices to use
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 FPS = 15
-API_URL = "http://192.168.50.99:8082"  # URL of activity monitor server API
+API_URL = "http://192.168.50.22:8082"  # URL of activity monitor server API
 DETECTION_RESULT_URL = f"{API_URL}/detection_result"  # URL for getting detection results
 FRAME_SKIP = 3  # Process every 3rd frame
 
