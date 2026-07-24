@@ -73,6 +73,13 @@ app = Flask(__name__)
 # Dictionary to store camera objects
 cameras = {}
 
+# Latest encoded JPEG per camera (single producer thread, many stream consumers)
+latest_frames = {}
+frame_locks = {}
+capture_threads = {}
+capture_stop = threading.Event()
+FRAME_INTERVAL = 1.0 / FPS
+
 # Store last activity result (shared across all cameras)
 last_activity_result = {
     'activity': 'Unknown',
@@ -243,14 +250,26 @@ def setup_camera(camera_index):
     camera.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
     camera.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
     camera.set(cv2.CAP_PROP_FPS, FPS)
+    # Keep only the newest frame so brief stalls do not build multi-day lag
+    camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     return camera
 
 def initialize_cameras():
-    """Initialize all cameras at startup."""
+    """Initialize all cameras and start one capture thread per camera."""
     for camera_index in CAMERA_INDICES:
         camera = setup_camera(camera_index)
         if camera.isOpened():
             cameras[camera_index] = camera
+            frame_locks[camera_index] = threading.Lock()
+            latest_frames[camera_index] = None
+            thread = threading.Thread(
+                target=capture_loop,
+                args=(camera_index,),
+                daemon=True,
+                name=f"camera-capture-{camera_index}",
+            )
+            capture_threads[camera_index] = thread
+            thread.start()
             print(f"Successfully initialized camera {camera_index}")
         else:
             print(f"Failed to initialize camera {camera_index}")
@@ -258,6 +277,77 @@ def initialize_cameras():
 def get_camera(camera_index):
     """Get a camera object for the given index."""
     return cameras.get(camera_index)
+
+def encode_frame(camera_index, frame):
+    """Apply overlays and encode a frame as JPEG bytes."""
+    try:
+        current_time = get_current_timestamp()
+        temperature, humidity, air_quality, air_quality_ppm = read_sensors()
+
+        texts = [
+            f"Time: {current_time}",
+            f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%",
+            f"Air Quality: {air_quality} ({air_quality_ppm:.1f} PPM)"
+        ]
+
+        if api_error_count >= api_error_threshold:
+            texts.append("Activity: API Unavailable")
+        elif last_activity_result['activity'] == "Unknown":
+            texts.append("Activity: Unknown")
+        else:
+            texts.append(
+                f"Activity: {last_activity_result['activity']} "
+                f"({last_activity_result['activity_probability']*100:.1f}%)"
+            )
+
+        if camera_index != 4:
+            add_text_overlay(frame, texts)
+    except Exception as e:
+        print(f"Error processing frame: {e}")
+        cv2.putText(
+            frame,
+            f"Error: {str(e)}",
+            (50, FRAME_HEIGHT // 2),
+            FONT,
+            FONT_SCALE,
+            TEXT_COLOR,
+            FONT_THICKNESS,
+        )
+
+    ret, buffer = cv2.imencode('.jpg', frame)
+    if not ret:
+        return None
+    return buffer.tobytes()
+
+def capture_loop(camera_index):
+    """Continuously grab the newest camera frame and publish the latest JPEG.
+
+    BUFFERSIZE=1 means unread frames are overwritten, so pacing encode to FPS
+    cannot build a multi-day backlog. One thread owns each VideoCapture.
+    """
+    camera = get_camera(camera_index)
+    if camera is None:
+        return
+
+    lock = frame_locks[camera_index]
+
+    while not capture_stop.is_set():
+        loop_start = time.monotonic()
+
+        success, frame = camera.read()
+        if not success:
+            time.sleep(0.05)
+            continue
+
+        jpeg = encode_frame(camera_index, frame)
+        if jpeg is not None:
+            with lock:
+                latest_frames[camera_index] = jpeg
+
+        elapsed = time.monotonic() - loop_start
+        sleep_time = FRAME_INTERVAL - elapsed
+        if sleep_time > 0:
+            time.sleep(sleep_time)
 
 def poll_detection_results():
     """Poll detection results from main.py server."""
@@ -287,55 +377,27 @@ def poll_detection_results():
         time.sleep(0.5)  # Poll every 500ms
 
 def generate_frames(camera_index):
-    """Generate video frames from specified camera."""
-    camera = get_camera(camera_index)
-    if camera is None:
+    """Stream the latest JPEG for a camera without touching VideoCapture.
+
+    Clients only consume the newest published frame, so a slow browser cannot
+    back up the camera buffer or steal frames from other clients.
+    """
+    if camera_index not in cameras:
         return
-    
-    frame_count = 0
-    
-    while True:
-        success, frame = camera.read()
-        if not success:
-            break
 
-        try:
-            # Get local readings
-            current_time = get_current_timestamp()
-            temperature, humidity, air_quality, air_quality_ppm = read_sensors()
-            
-            # Use the shared activity result for overlay
-            texts = [
-                f"Time: {current_time}",
-                f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%",
-                f"Air Quality: {air_quality} ({air_quality_ppm:.1f} PPM)"
-            ]
-            
-            # Show activity with probability only if it's not Unknown and API is working
-            if api_error_count >= api_error_threshold:
-                texts.append("Activity: API Unavailable")
-            elif last_activity_result['activity'] == "Unknown":
-                texts.append("Activity: Unknown")
-            else:
-                texts.append(f"Activity: {last_activity_result['activity']} ({last_activity_result['activity_probability']*100:.1f}%)")
-            
-            # Add text overlay to frame
-            if camera_index != 4:
-                add_text_overlay(frame, texts)
-            
-            frame_count += 1
-            
-        except Exception as e:
-            print(f"Error processing frame: {e}")
-            # Add error message to frame
-            cv2.putText(frame, f"Error: {str(e)}", (50, FRAME_HEIGHT//2), 
-                       FONT, FONT_SCALE, TEXT_COLOR, FONT_THICKNESS)
+    lock = frame_locks[camera_index]
 
-        # Encode processed frame as JPEG for MJPEG streaming
-        ret, buffer = cv2.imencode('.jpg', frame)
-        frame = buffer.tobytes()
+    while not capture_stop.is_set():
+        with lock:
+            frame = latest_frames.get(camera_index)
+
+        if frame is None:
+            time.sleep(0.05)
+            continue
+
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+        time.sleep(FRAME_INTERVAL)
 
 @app.route('/camera<int:camera_index>')
 def camera_feed(camera_index):
@@ -424,6 +486,7 @@ if __name__ == '__main__':
         
         app.run(host='0.0.0.0', port=8081, threaded=True)
     finally:
+        capture_stop.set()
         # Release all camera resources when the application stops
         for camera in cameras.values():
             camera.release()
