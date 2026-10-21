@@ -23,3 +23,6 @@ sudo systemctl enable hamster_monitor
 
 # Start the service
 sudo systemctl start hamster_monitor
+
+# Show the status
+sudo systemctl status hamster_monitor
