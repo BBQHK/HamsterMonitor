@@ -300,7 +300,7 @@ def encode_frame(camera_index, frame):
                 f"({last_activity_result['activity_probability']*100:.1f}%)"
             )
 
-        if camera_index != 4:
+        if camera_index != 6:
             add_text_overlay(frame, texts)
     except Exception as e:
         print(f"Error processing frame: {e}")
