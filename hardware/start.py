@@ -13,7 +13,7 @@ import adafruit_ads1x15.ads1115 as ADS
 from adafruit_ads1x15.analog_in import AnalogIn
 
 # Constants
-CAMERA_INDICES = [0, 2, 4]  # List of camera indices to use
+CAMERA_INDICES = [0, 2, 6]  # List of camera indices to use
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 FPS = 15
