@@ -34,9 +34,16 @@ def load_config():
     if not indices:
         raise ValueError(f"camera.indices is empty in {config_path}")
 
+    detection_index = parser.getint("camera", "detection_index")
+    if detection_index not in indices:
+        raise ValueError(
+            f"camera.detection_index {detection_index} is not in camera.indices {indices}"
+        )
+
     api_url = parser.get("api", "url").rstrip("/")
     return {
         "camera_indices": indices,
+        "detection_index": detection_index,
         "frame_width": parser.getint("camera", "frame_width"),
         "frame_height": parser.getint("camera", "frame_height"),
         "fps": parser.getint("camera", "fps"),
@@ -47,6 +54,7 @@ def load_config():
 
 _config = load_config()
 CAMERA_INDICES = _config["camera_indices"]
+DETECTION_CAMERA_INDEX = _config["detection_index"]
 FRAME_WIDTH = _config["frame_width"]
 FRAME_HEIGHT = _config["frame_height"]
 FPS = _config["fps"]
@@ -333,7 +341,7 @@ def encode_frame(camera_index, frame):
                 f"({last_activity_result['activity_probability']*100:.1f}%)"
             )
 
-        if camera_index != 6:
+        if camera_index != DETECTION_CAMERA_INDEX:
             add_text_overlay(frame, texts)
     except Exception as e:
         print(f"Error processing frame: {e}")
@@ -439,14 +447,25 @@ def camera_feed(camera_index):
         return "Invalid camera index", 400
     return Response(generate_frames(camera_index), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+@app.route('/detection')
+def detection_feed():
+    """Stream the detection camera with no text overlay."""
+    return Response(
+        generate_frames(DETECTION_CAMERA_INDEX),
+        mimetype='multipart/x-mixed-replace; boundary=frame',
+    )
+
 @app.route('/')
 def index():
     """Serve a simple HTML page with camera feeds."""
     camera_feed_html = ""
     for camera_index in CAMERA_INDICES:
+        label = f"/camera{camera_index}"
+        if camera_index == DETECTION_CAMERA_INDEX:
+            label += " (detection)"
         camera_feed_html += f"""
                 <div class="camera-feed">
-                    <h3>/camera{camera_index}</h3>
+                    <h3>{label}</h3>
                     <img src="/camera{camera_index}" />
                 </div>
         """
@@ -506,6 +525,7 @@ def get_status():
 
 if __name__ == '__main__':
     try:
+        print(f"Detection camera: {DETECTION_CAMERA_INDEX} (no overlay, served at /detection)")
         # Initialize all cameras before starting the server
         initialize_cameras()
         
