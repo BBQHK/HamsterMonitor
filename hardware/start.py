@@ -11,15 +11,48 @@ import threading
 import busio
 import adafruit_ads1x15.ads1115 as ADS
 from adafruit_ads1x15.analog_in import AnalogIn
+import configparser
+import os
 
-# Constants
-CAMERA_INDICES = [0, 2, 6]  # List of camera indices to use
-FRAME_WIDTH = 640
-FRAME_HEIGHT = 480
-FPS = 15
-API_URL = "http://192.168.50.22:8082"  # URL of activity monitor server API
-DETECTION_RESULT_URL = f"{API_URL}/detection_result"  # URL for getting detection results
-FRAME_SKIP = 3  # Process every 3rd frame
+def load_config():
+    """Load camera and API settings from config.conf next to this script.
+
+    Override the path with the HAMSTER_CONFIG environment variable.
+    """
+    default_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.conf")
+    config_path = os.environ.get("HAMSTER_CONFIG", default_path)
+    parser = configparser.ConfigParser()
+    read = parser.read(config_path)
+    if not read:
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+
+    indices = [
+        int(part.strip())
+        for part in parser.get("camera", "indices").split(",")
+        if part.strip()
+    ]
+    if not indices:
+        raise ValueError(f"camera.indices is empty in {config_path}")
+
+    api_url = parser.get("api", "url").rstrip("/")
+    return {
+        "camera_indices": indices,
+        "frame_width": parser.getint("camera", "frame_width"),
+        "frame_height": parser.getint("camera", "frame_height"),
+        "fps": parser.getint("camera", "fps"),
+        "frame_skip": parser.getint("camera", "frame_skip"),
+        "api_url": api_url,
+        "detection_result_url": f"{api_url}/detection_result",
+    }
+
+_config = load_config()
+CAMERA_INDICES = _config["camera_indices"]
+FRAME_WIDTH = _config["frame_width"]
+FRAME_HEIGHT = _config["frame_height"]
+FPS = _config["fps"]
+API_URL = _config["api_url"]
+DETECTION_RESULT_URL = _config["detection_result_url"]
+FRAME_SKIP = _config["frame_skip"]
 
 # DHT11 settings
 DHT_PIN = board.D4  # GPIO pin number where DHT11 is connected
