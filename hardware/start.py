@@ -376,6 +376,7 @@ class H264Publisher:
             "-muxpreload", "0",
             "-f", "rtsp",
             "-rtsp_transport", "tcp",
+            "-pkt_size", "1200",
             url,
         ]
         opened = False
