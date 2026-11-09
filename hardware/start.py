@@ -1,4 +1,4 @@
-from flask import Flask, Response
+from flask import Flask, Response, request
 import cv2
 import requests
 import json
@@ -12,7 +12,12 @@ import busio
 import adafruit_ads1x15.ads1115 as ADS
 from adafruit_ads1x15.analog_in import AnalogIn
 import configparser
+import html
 import os
+import shutil
+import socket
+import subprocess
+import tempfile
 
 def load_config():
     """Load camera and API settings from config.conf next to this script.
@@ -41,6 +46,26 @@ def load_config():
         )
 
     api_url = parser.get("api", "url").rstrip("/")
+    rtsp_enabled = True
+    rtsp_port = 8554
+    rtsp_bitrate_kbps = 800
+    ffmpeg_bin = ""
+    mediamtx_bin = ""
+    if parser.has_section("rtsp"):
+        if parser.has_option("rtsp", "enabled"):
+            rtsp_enabled = parser.getboolean("rtsp", "enabled")
+        if parser.has_option("rtsp", "port"):
+            rtsp_port = parser.getint("rtsp", "port")
+        if parser.has_option("rtsp", "bitrate_kbps"):
+            rtsp_bitrate_kbps = parser.getint("rtsp", "bitrate_kbps")
+        if parser.has_option("rtsp", "ffmpeg_bin"):
+            ffmpeg_bin = parser.get("rtsp", "ffmpeg_bin").strip()
+        if parser.has_option("rtsp", "mediamtx_bin"):
+            mediamtx_bin = parser.get("rtsp", "mediamtx_bin").strip()
+    if rtsp_port < 1 or rtsp_port > 65535:
+        raise ValueError(f"rtsp.port is out of range in {config_path}")
+    if rtsp_bitrate_kbps < 1:
+        raise ValueError(f"rtsp.bitrate_kbps must be positive in {config_path}")
     return {
         "camera_indices": indices,
         "detection_index": detection_index,
@@ -50,6 +75,11 @@ def load_config():
         "frame_skip": parser.getint("camera", "frame_skip"),
         "api_url": api_url,
         "detection_result_url": f"{api_url}/detection_result",
+        "rtsp_enabled": rtsp_enabled,
+        "rtsp_port": rtsp_port,
+        "rtsp_bitrate_kbps": rtsp_bitrate_kbps,
+        "ffmpeg_bin": ffmpeg_bin,
+        "mediamtx_bin": mediamtx_bin,
     }
 
 _config = load_config()
@@ -61,6 +91,11 @@ FPS = _config["fps"]
 API_URL = _config["api_url"]
 DETECTION_RESULT_URL = _config["detection_result_url"]
 FRAME_SKIP = _config["frame_skip"]
+RTSP_ENABLED = _config["rtsp_enabled"]
+RTSP_PORT = _config["rtsp_port"]
+RTSP_BITRATE_KBPS = _config["rtsp_bitrate_kbps"]
+FFMPEG_BIN_CONFIG = _config["ffmpeg_bin"]
+MEDIAMTX_BIN_CONFIG = _config["mediamtx_bin"]
 
 # DHT11 settings
 DHT_PIN = board.D4  # GPIO pin number where DHT11 is connected
@@ -114,12 +149,323 @@ app = Flask(__name__)
 # Dictionary to store camera objects
 cameras = {}
 
-# Latest encoded JPEG per camera (single producer thread, many stream consumers)
+# Latest JPEG for the detection camera. Other cameras are published as H.264.
 latest_frames = {}
 frame_locks = {}
 capture_threads = {}
 capture_stop = threading.Event()
 FRAME_INTERVAL = 1.0 / FPS
+
+h264_publishers = {}
+mediamtx_proc = None
+mediamtx_config_path = None
+_ffmpeg_bin = None
+
+
+def resolve_bin(configured, name):
+    """Find a binary from config, next to this script, or PATH."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = []
+    if configured:
+        candidates.append(configured)
+    candidates.append(os.path.join(script_dir, name))
+    for candidate in candidates:
+        if os.path.isfile(candidate):
+            return candidate
+        found = shutil.which(candidate)
+        if found:
+            return found
+    return shutil.which(name)
+
+
+def rtsp_path(camera_index):
+    return f"camera{camera_index}"
+
+
+def _port_open(port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.2)
+        return sock.connect_ex(("127.0.0.1", port)) == 0
+
+
+def _wait_port(port, timeout):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if _port_open(port):
+            return True
+        time.sleep(0.1)
+    return False
+
+
+def _write_mediamtx_config():
+    """Write a temporary MediaMTX config that only serves these camera paths."""
+    lines = [
+        "logLevel: info",
+        "rtsp: true",
+        "rtspTransports: [tcp]",
+        f"rtspAddress: :{RTSP_PORT}",
+        "rtmp: false",
+        "hls: false",
+        "webrtc: false",
+        "srt: false",
+        "authMethod: internal",
+        "authInternalUsers:",
+        "  - user: any",
+        '    pass: ""',
+        "    ips: []",
+        "    permissions:",
+        "      - action: publish",
+        '        path: ""',
+        "      - action: read",
+        '        path: ""',
+        "pathDefaults:",
+        "  source: publisher",
+        "paths:",
+    ]
+    for camera_index in CAMERA_INDICES:
+        lines.append(f"  {rtsp_path(camera_index)}:")
+    fd, path = tempfile.mkstemp(prefix="hamster-mediamtx-", suffix=".yml")
+    with os.fdopen(fd, "w", encoding="utf-8") as config_file:
+        config_file.write("\n".join(lines) + "\n")
+    return path
+
+
+def start_mediamtx():
+    """Start MediaMTX, or use an RTSP server that is already listening."""
+    global mediamtx_proc, mediamtx_config_path
+    if _port_open(RTSP_PORT):
+        print(f"RTSP port {RTSP_PORT} is already open; publishing to the existing server")
+        return True
+
+    binary = resolve_bin(MEDIAMTX_BIN_CONFIG, "mediamtx")
+    if not binary:
+        print("mediamtx not found. Download the linux_arm64 build from")
+        print("https://github.com/bluenviron/mediamtx/releases")
+        print("and place the mediamtx binary next to start.py, or on PATH.")
+        return False
+
+    mediamtx_config_path = _write_mediamtx_config()
+    try:
+        mediamtx_proc = subprocess.Popen([binary, mediamtx_config_path])
+    except OSError as exc:
+        print(f"Failed to start mediamtx: {exc}")
+        stop_mediamtx()
+        return False
+    if _wait_port(RTSP_PORT, 5):
+        print(f"RTSP server listening on :{RTSP_PORT}")
+        return True
+
+    print("mediamtx did not open the RTSP port")
+    stop_mediamtx()
+    return False
+
+
+def stop_mediamtx():
+    global mediamtx_proc, mediamtx_config_path
+    proc = mediamtx_proc
+    mediamtx_proc = None
+    if proc is not None and proc.poll() is None:
+        proc.terminate()
+        try:
+            proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+    if mediamtx_config_path and os.path.exists(mediamtx_config_path):
+        try:
+            os.remove(mediamtx_config_path)
+        except OSError:
+            pass
+    mediamtx_config_path = None
+
+
+class H264Publisher:
+    """Publish one camera to MediaMTX as baseline H.264 over RTSP.
+
+    Frames are written on a private pipe so ffmpeg's stdin is not the video.
+    The capture thread only stores the newest frame.
+    """
+
+    def __init__(self, camera_index):
+        self.camera_index = camera_index
+        self.latest = None
+        self.cond = threading.Condition()
+        self.stop_event = threading.Event()
+        self.proc = None
+        self.write_fd = None
+        self.proc_lock = threading.Lock()
+        self._warned = False
+        self.thread = threading.Thread(
+            target=self._run,
+            name=f"h264-{camera_index}",
+            daemon=True,
+        )
+
+    def submit(self, frame):
+        if self.stop_event.is_set():
+            return
+        with self.cond:
+            self.latest = frame
+            self.cond.notify()
+
+    def stop(self):
+        self.stop_event.set()
+        with self.cond:
+            self.cond.notify_all()
+        self._stop_ffmpeg()
+        self.thread.join(timeout=3)
+
+    def _ffmpeg_bin(self):
+        global _ffmpeg_bin
+        if _ffmpeg_bin is None:
+            _ffmpeg_bin = resolve_bin(FFMPEG_BIN_CONFIG, "ffmpeg") or ""
+        return _ffmpeg_bin
+
+    def _open_ffmpeg(self):
+        binary = self._ffmpeg_bin()
+        if not binary:
+            if not self._warned:
+                print("ffmpeg not found. Install it with: sudo apt install ffmpeg")
+                self._warned = True
+            return None
+
+        read_fd, write_fd = os.pipe()
+        gop = str(max(1, FPS))
+        url = f"rtsp://127.0.0.1:{RTSP_PORT}/{rtsp_path(self.camera_index)}"
+        command = [
+            binary, "-hide_banner", "-loglevel", "warning",
+            "-f", "rawvideo",
+            "-pix_fmt", "bgr24",
+            "-video_size", f"{FRAME_WIDTH}x{FRAME_HEIGHT}",
+            "-framerate", str(FPS),
+            "-i", f"pipe:{read_fd}",
+            "-an",
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-tune", "zerolatency",
+            "-profile:v", "baseline",
+            "-pix_fmt", "yuv420p",
+            "-g", gop,
+            "-keyint_min", gop,
+            "-bf", "0",
+            "-b:v", f"{RTSP_BITRATE_KBPS}k",
+            "-maxrate", f"{RTSP_BITRATE_KBPS}k",
+            "-bufsize", f"{RTSP_BITRATE_KBPS * 2}k",
+            "-x264-params", "repeat-headers=1:scenecut=0",
+            "-muxdelay", "0",
+            "-muxpreload", "0",
+            "-f", "rtsp",
+            "-rtsp_transport", "tcp",
+            url,
+        ]
+        opened = False
+        try:
+            proc = subprocess.Popen(
+                command,
+                stdin=subprocess.DEVNULL,
+                pass_fds=(read_fd,),
+            )
+            opened = True
+        except OSError as exc:
+            print(f"Failed to start ffmpeg for camera {self.camera_index}: {exc}")
+            return None
+        finally:
+            os.close(read_fd)
+            if not opened:
+                os.close(write_fd)
+        if not opened:
+            return None
+
+        with self.proc_lock:
+            self.proc = proc
+            self.write_fd = write_fd
+        print(f"Publishing H.264 rtsp://0.0.0.0:{RTSP_PORT}/{rtsp_path(self.camera_index)}")
+        return proc
+
+    def _stop_ffmpeg(self):
+        with self.proc_lock:
+            proc = self.proc
+            write_fd = self.write_fd
+            self.proc = None
+            self.write_fd = None
+        if write_fd is not None:
+            try:
+                os.close(write_fd)
+            except OSError:
+                pass
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+
+    def _write_all(self, data):
+        with self.proc_lock:
+            write_fd = self.write_fd
+        if write_fd is None:
+            raise BrokenPipeError
+        view = memoryview(data)
+        while view:
+            written = os.write(write_fd, view)
+            view = view[written:]
+
+    def _write_frames(self, proc):
+        while not self.stop_event.is_set():
+            with self.cond:
+                if self.latest is None and not self.stop_event.is_set():
+                    self.cond.wait(timeout=0.5)
+                frame = self.latest
+                self.latest = None
+            if frame is None:
+                if proc.poll() is not None:
+                    return
+                continue
+            try:
+                self._write_all(np.ascontiguousarray(frame).tobytes())
+            except (BrokenPipeError, OSError, ValueError):
+                return
+            if proc.poll() is not None:
+                return
+
+    def _run(self):
+        while not self.stop_event.is_set():
+            try:
+                proc = self._open_ffmpeg()
+            except Exception as exc:
+                print(f"H.264 publisher for camera {self.camera_index} failed to start: {exc}")
+                self.stop_event.wait(2)
+                continue
+            if proc is None:
+                self.stop_event.wait(2)
+                continue
+            self._write_frames(proc)
+            code = proc.poll()
+            self._stop_ffmpeg()
+            if self.stop_event.is_set():
+                return
+            print(f"H.264 publisher for camera {self.camera_index} exited ({code}); restarting")
+            self.stop_event.wait(1)
+
+
+def start_rtsp():
+    """Publish every camera as H.264. /detection is unaffected."""
+    if not RTSP_ENABLED:
+        print("H.264 RTSP is disabled in config.conf")
+        return
+    if not start_mediamtx():
+        print("H.264 RTSP did not start. /detection MJPEG is still available.")
+        return
+    for camera_index in CAMERA_INDICES:
+        publisher = H264Publisher(camera_index)
+        h264_publishers[camera_index] = publisher
+        publisher.thread.start()
+
+
+def stop_rtsp():
+    for publisher in h264_publishers.values():
+        publisher.stop()
+    h264_publishers.clear()
+    stop_mediamtx()
 
 # Store last activity result (shared across all cameras)
 last_activity_result = {
@@ -319,18 +665,33 @@ def get_camera(camera_index):
     """Get a camera object for the given index."""
     return cameras.get(camera_index)
 
-def encode_frame(camera_index, frame):
-    """Apply overlays and encode a frame as JPEG bytes."""
+def fit_frame(frame):
+    """Return a BGR frame at the configured size, or None if it cannot be used."""
+    if frame is None or frame.size == 0:
+        return None
+    if frame.ndim == 2:
+        frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+    elif frame.ndim == 3 and frame.shape[2] == 4:
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+    elif frame.ndim != 3 or frame.shape[2] != 3:
+        return None
+    if frame.shape[1] != FRAME_WIDTH or frame.shape[0] != FRAME_HEIGHT:
+        frame = cv2.resize(frame, (FRAME_WIDTH, FRAME_HEIGHT))
+    else:
+        frame = frame.copy()
+    return frame
+
+
+def annotate_frame(frame):
+    """Burn cage status into a viewing camera. The detection camera stays clean."""
     try:
         current_time = get_current_timestamp()
         temperature, humidity, air_quality, air_quality_ppm = read_sensors()
-
         texts = [
             f"Time: {current_time}",
             f"Temp: {temperature:.1f}C  Hum: {humidity:.1f}%",
             f"Air Quality: {air_quality} ({air_quality_ppm:.1f} PPM)"
         ]
-
         if api_error_count >= api_error_threshold:
             texts.append("Activity: API Unavailable")
         elif last_activity_result['activity'] == "Unknown":
@@ -340,9 +701,7 @@ def encode_frame(camera_index, frame):
                 f"Activity: {last_activity_result['activity']} "
                 f"({last_activity_result['activity_probability']*100:.1f}%)"
             )
-
-        if camera_index != DETECTION_CAMERA_INDEX:
-            add_text_overlay(frame, texts)
+        add_text_overlay(frame, texts)
     except Exception as e:
         print(f"Error processing frame: {e}")
         cv2.putText(
@@ -355,22 +714,27 @@ def encode_frame(camera_index, frame):
             FONT_THICKNESS,
         )
 
+
+def encode_jpeg(frame):
     ret, buffer = cv2.imencode('.jpg', frame)
     if not ret:
         return None
     return buffer.tobytes()
 
-def capture_loop(camera_index):
-    """Continuously grab the newest camera frame and publish the latest JPEG.
 
-    BUFFERSIZE=1 means unread frames are overwritten, so pacing encode to FPS
-    cannot build a multi-day backlog. One thread owns each VideoCapture.
+def capture_loop(camera_index):
+    """Grab frames for one camera.
+
+    The detection camera is published as MJPEG on /detection with no overlay.
+    Every camera, including that one, is also published as H.264 for Surveillance Station.
+    Viewing cameras have the status overlay burned into the H.264 stream.
     """
     camera = get_camera(camera_index)
     if camera is None:
         return
 
     lock = frame_locks[camera_index]
+    is_detection = camera_index == DETECTION_CAMERA_INDEX
 
     while not capture_stop.is_set():
         loop_start = time.monotonic()
@@ -380,10 +744,22 @@ def capture_loop(camera_index):
             time.sleep(0.05)
             continue
 
-        jpeg = encode_frame(camera_index, frame)
-        if jpeg is not None:
-            with lock:
-                latest_frames[camera_index] = jpeg
+        frame = fit_frame(frame)
+        if frame is None:
+            time.sleep(0.05)
+            continue
+
+        if is_detection:
+            jpeg = encode_jpeg(frame)
+            if jpeg is not None:
+                with lock:
+                    latest_frames[camera_index] = jpeg
+        else:
+            annotate_frame(frame)
+
+        publisher = h264_publishers.get(camera_index)
+        if publisher is not None:
+            publisher.submit(frame)
 
         elapsed = time.monotonic() - loop_start
         sleep_time = FRAME_INTERVAL - elapsed
@@ -442,10 +818,12 @@ def generate_frames(camera_index):
 
 @app.route('/camera<int:camera_index>')
 def camera_feed(camera_index):
-    """Stream video feed from specified camera index."""
+    """Return the H.264 RTSP address. Browsers cannot play this URL in an img tag."""
     if camera_index not in CAMERA_INDICES:
         return "Invalid camera index", 400
-    return Response(generate_frames(camera_index), mimetype='multipart/x-mixed-replace; boundary=frame')
+    host = request.host.split(":")[0]
+    url = f"rtsp://{host}:{RTSP_PORT}/{rtsp_path(camera_index)}"
+    return f"H.264 RTSP: {url}\n", 200, {"Content-Type": "text/plain; charset=utf-8"}
 
 @app.route('/detection')
 def detection_feed():
@@ -457,26 +835,37 @@ def detection_feed():
 
 @app.route('/')
 def index():
-    """Serve a simple HTML page with camera feeds."""
+    """List H.264 RTSP addresses and show the detection MJPEG preview."""
+    host = request.host.split(":")[0]
+    if not RTSP_ENABLED:
+        notice = "H.264 RTSP is disabled in config.conf."
+    elif not h264_publishers:
+        notice = "H.264 RTSP did not start. Install ffmpeg and mediamtx, then restart."
+    else:
+        notice = "Surveillance Station: User Define, Streaming-RTSP, H.264, transport TCP."
+
     camera_feed_html = ""
     for camera_index in CAMERA_INDICES:
-        label = f"/camera{camera_index}"
+        url = f"rtsp://{host}:{RTSP_PORT}/{rtsp_path(camera_index)}"
         if camera_index == DETECTION_CAMERA_INDEX:
-            label += " (detection)"
+            detail = "No overlay. Activity detection still uses /detection (MJPEG)."
+        else:
+            detail = "Status overlay is burned into this recording."
         camera_feed_html += f"""
                 <div class="camera-feed">
-                    <h3>{label}</h3>
-                    <img src="/camera{camera_index}" />
+                    <h3>camera {camera_index}</h3>
+                    <p>{html.escape(detail)}</p>
+                    <p><code>{html.escape(url)}</code></p>
                 </div>
         """
 
     return f"""
     <html>
         <head>
-            <title>Multi-Camera Feed</title>
+            <title>Hamster cameras</title>
             <style>
-                body {{ margin: 0; padding: 20px; background: #333; color: white; }}
-                .camera-grid {{ 
+                body {{ margin: 0; padding: 20px; background: #333; color: white; font-family: sans-serif; }}
+                .camera-grid {{
                     display: grid;
                     grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
                     gap: 20px;
@@ -492,14 +881,18 @@ def index():
                     margin: 0 0 10px 0;
                     color: #4CAF50;
                 }}
-                img {{ width: 100%; height: auto; }}
+                code {{ color: #fff; word-break: break-all; }}
+                img {{ width: 100%; max-width: 640px; height: auto; background: #222; }}
             </style>
         </head>
         <body>
-            <h1>Multi-Camera Feed</h1>
+            <h1>Hamster cameras</h1>
+            <p>{html.escape(notice)}</p>
             <div class="camera-grid">
                 {camera_feed_html}
             </div>
+            <h2>Activity detection</h2>
+            <img src="/detection" alt="detection" />
         </body>
     </html>
     """
@@ -525,7 +918,10 @@ def get_status():
 
 if __name__ == '__main__':
     try:
-        print(f"Detection camera: {DETECTION_CAMERA_INDEX} (no overlay, served at /detection)")
+        print(f"Detection camera: {DETECTION_CAMERA_INDEX} (no overlay, MJPEG at /detection)")
+        start_rtsp()
+        for camera_index in CAMERA_INDICES:
+            print(f"Surveillance Station RTSP: rtsp://<pi>:{RTSP_PORT}/{rtsp_path(camera_index)}")
         # Initialize all cameras before starting the server
         initialize_cameras()
         
@@ -540,6 +936,7 @@ if __name__ == '__main__':
         app.run(host='0.0.0.0', port=8081, threaded=True)
     finally:
         capture_stop.set()
+        stop_rtsp()
         # Release all camera resources when the application stops
         for camera in cameras.values():
             camera.release()
