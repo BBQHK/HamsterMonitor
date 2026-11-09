@@ -357,7 +357,7 @@ class H264Publisher:
             "-f", "rawvideo",
             "-pix_fmt", "bgr24",
             "-video_size", f"{FRAME_WIDTH}x{FRAME_HEIGHT}",
-            "-framerate", str(FPS),
+            "-use_wallclock_as_timestamps", "1",
             "-i", f"pipe:{read_fd}",
             "-an",
             "-c:v", "libx264",
@@ -374,6 +374,7 @@ class H264Publisher:
             "-x264-params", "repeat-headers=1:scenecut=0",
             "-muxdelay", "0",
             "-muxpreload", "0",
+            "-vsync", "0",
             "-f", "rtsp",
             "-rtsp_transport", "tcp",
             url,
@@ -431,16 +432,26 @@ class H264Publisher:
             view = view[written:]
 
     def _write_frames(self, proc):
+        """Send one frame per tick, and let ffmpeg timestamp it from the wall clock.
+
+        A fixed 15 fps timestamp made the burned-in clock run fast whenever a
+        frame was late, then slow when the player stretched those frames back out.
+        """
         next_tick = time.monotonic()
         while not self.stop_event.is_set():
-            next_tick += FRAME_INTERVAL
+            now = time.monotonic()
+            if next_tick < now:
+                next_tick = now
+            delay = next_tick - now
+            if delay > 0 and self.stop_event.wait(timeout=delay):
+                return
+
             with self.cond:
                 frame = self.latest
             if frame is None:
                 if proc.poll() is not None:
                     return
-                if self.stop_event.wait(timeout=FRAME_INTERVAL):
-                    return
+                next_tick = time.monotonic() + FRAME_INTERVAL
                 continue
 
             # Copy before drawing. The capture thread keeps replacing latest.
@@ -453,14 +464,7 @@ class H264Publisher:
                 return
             if proc.poll() is not None:
                 return
-
-            delay = next_tick - time.monotonic()
-            if delay > 0:
-                if self.stop_event.wait(timeout=delay):
-                    return
-            else:
-                # Fell behind. Reset instead of bursting a catch-up queue.
-                next_tick = time.monotonic()
+            next_tick += FRAME_INTERVAL
 
     def _run(self):
         while not self.stop_event.is_set():
