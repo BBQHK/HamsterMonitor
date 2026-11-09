@@ -301,7 +301,9 @@ class H264Publisher:
     """Publish one camera to MediaMTX as baseline H.264 over RTSP.
 
     Frames are written on a private pipe so ffmpeg's stdin is not the video.
-    The capture thread only stores the newest frame.
+    The capture thread only stores the newest picture. This thread emits one
+    frame per tick at the configured FPS and draws the clock at send time, so
+    the on-screen second matches the stream timeline.
     """
 
     def __init__(self, camera_index):
@@ -429,22 +431,36 @@ class H264Publisher:
             view = view[written:]
 
     def _write_frames(self, proc):
+        next_tick = time.monotonic()
         while not self.stop_event.is_set():
+            next_tick += FRAME_INTERVAL
             with self.cond:
-                if self.latest is None and not self.stop_event.is_set():
-                    self.cond.wait(timeout=0.5)
                 frame = self.latest
-                self.latest = None
             if frame is None:
                 if proc.poll() is not None:
                     return
+                if self.stop_event.wait(timeout=FRAME_INTERVAL):
+                    return
                 continue
+
+            # Copy before drawing. The capture thread keeps replacing latest.
+            frame = frame.copy()
+            if self.camera_index != DETECTION_CAMERA_INDEX:
+                annotate_frame(frame)
             try:
                 self._write_all(np.ascontiguousarray(frame).tobytes())
             except (BrokenPipeError, OSError, ValueError):
                 return
             if proc.poll() is not None:
                 return
+
+            delay = next_tick - time.monotonic()
+            if delay > 0:
+                if self.stop_event.wait(timeout=delay):
+                    return
+            else:
+                # Fell behind. Reset instead of bursting a catch-up queue.
+                next_tick = time.monotonic()
 
     def _run(self):
         while not self.stop_event.is_set():
@@ -756,8 +772,6 @@ def capture_loop(camera_index):
     is_detection = camera_index == DETECTION_CAMERA_INDEX
 
     while not capture_stop.is_set():
-        loop_start = time.monotonic()
-
         success, frame = camera.read()
         if not success:
             time.sleep(0.05)
@@ -773,17 +787,14 @@ def capture_loop(camera_index):
             if jpeg is not None:
                 with lock:
                     latest_frames[camera_index] = jpeg
-        else:
-            annotate_frame(frame)
 
         publisher = h264_publishers.get(camera_index)
         if publisher is not None:
             publisher.submit(frame)
 
-        elapsed = time.monotonic() - loop_start
-        sleep_time = FRAME_INTERVAL - elapsed
-        if sleep_time > 0:
-            time.sleep(sleep_time)
+        # camera.read() already waits for the next frame. Sleeping again here
+        # made the published rate slower than the 15 fps ffmpeg timeline, so
+        # the burned-in clock jumped.
 
 def poll_detection_results():
     """Poll detection results from main.py server."""
