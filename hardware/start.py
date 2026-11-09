@@ -224,6 +224,7 @@ def _write_mediamtx_config():
     ]
     for camera_index in CAMERA_INDICES:
         lines.append(f"  {rtsp_path(camera_index)}:")
+        lines.append("    source: publisher")
     fd, path = tempfile.mkstemp(prefix="hamster-mediamtx-", suffix=".yml")
     with os.fdopen(fd, "w", encoding="utf-8") as config_file:
         config_file.write("\n".join(lines) + "\n")
@@ -246,18 +247,36 @@ def start_mediamtx():
 
     mediamtx_config_path = _write_mediamtx_config()
     try:
-        mediamtx_proc = subprocess.Popen([binary, mediamtx_config_path])
+        mediamtx_proc = subprocess.Popen(
+            [binary, mediamtx_config_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
     except OSError as exc:
         print(f"Failed to start mediamtx: {exc}")
         stop_mediamtx()
         return False
+    threading.Thread(
+        target=_log_process_output,
+        args=(mediamtx_proc, "mediamtx: "),
+        daemon=True,
+    ).start()
     if _wait_port(RTSP_PORT, 5):
         print(f"RTSP server listening on :{RTSP_PORT}")
         return True
 
-    print("mediamtx did not open the RTSP port")
+    code = mediamtx_proc.poll()
+    print(f"mediamtx did not open port {RTSP_PORT} (exit {code})")
     stop_mediamtx()
     return False
+
+
+def _log_process_output(proc, prefix):
+    if proc.stdout is None:
+        return
+    for line in proc.stdout:
+        print(f"{prefix}{line.rstrip()}")
 
 
 def stop_mediamtx():
