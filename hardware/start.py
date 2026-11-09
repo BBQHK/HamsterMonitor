@@ -357,7 +357,7 @@ class H264Publisher:
             "-f", "rawvideo",
             "-pix_fmt", "bgr24",
             "-video_size", f"{FRAME_WIDTH}x{FRAME_HEIGHT}",
-            "-use_wallclock_as_timestamps", "1",
+            "-framerate", str(FPS),
             "-i", f"pipe:{read_fd}",
             "-an",
             "-c:v", "libx264",
@@ -370,11 +370,10 @@ class H264Publisher:
             "-bf", "0",
             "-b:v", f"{RTSP_BITRATE_KBPS}k",
             "-maxrate", f"{RTSP_BITRATE_KBPS}k",
-            "-bufsize", f"{RTSP_BITRATE_KBPS * 2}k",
-            "-x264-params", "repeat-headers=1:scenecut=0",
+            "-bufsize", f"{RTSP_BITRATE_KBPS}k",
+            "-x264-params", "repeat-headers=1:scenecut=0:force-cfr=1:aud=1:slice-max-size=1200",
             "-muxdelay", "0",
             "-muxpreload", "0",
-            "-vsync", "0",
             "-f", "rtsp",
             "-rtsp_transport", "tcp",
             url,
@@ -432,26 +431,21 @@ class H264Publisher:
             view = view[written:]
 
     def _write_frames(self, proc):
-        """Send one frame per tick, and let ffmpeg timestamp it from the wall clock.
+        """Write one frame every tick and never burst to catch up.
 
-        A fixed 15 fps timestamp made the burned-in clock run fast whenever a
-        frame was late, then slow when the player stretched those frames back out.
+        ffmpeg stamps each frame at 1/FPS. A late frame used to be followed by
+        several frames sent back to back, so Surveillance Station played that
+        burst fast and then waited.
         """
-        next_tick = time.monotonic()
         while not self.stop_event.is_set():
-            now = time.monotonic()
-            if next_tick < now:
-                next_tick = now
-            delay = next_tick - now
-            if delay > 0 and self.stop_event.wait(timeout=delay):
-                return
-
+            tick_start = time.monotonic()
             with self.cond:
                 frame = self.latest
             if frame is None:
                 if proc.poll() is not None:
                     return
-                next_tick = time.monotonic() + FRAME_INTERVAL
+                if self.stop_event.wait(timeout=FRAME_INTERVAL):
+                    return
                 continue
 
             # Copy before drawing. The capture thread keeps replacing latest.
@@ -464,7 +458,10 @@ class H264Publisher:
                 return
             if proc.poll() is not None:
                 return
-            next_tick += FRAME_INTERVAL
+
+            remain = FRAME_INTERVAL - (time.monotonic() - tick_start)
+            if remain > 0 and self.stop_event.wait(timeout=remain):
+                return
 
     def _run(self):
         while not self.stop_event.is_set():
