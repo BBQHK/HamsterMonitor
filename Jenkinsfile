@@ -1,8 +1,7 @@
 pipeline {
     agent any
 
-    // Manual only: do not add SCM poll or webhook triggers.
-    triggers {}
+    // Manual only: leave job Build Triggers unchecked; do not add triggers here.
 
     parameters {
         string(
