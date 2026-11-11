@@ -26,3 +26,27 @@ sudo systemctl start hamster_monitor
 
 # Show the status
 sudo systemctl status hamster_monitor
+
+
+Jenkins deploy (hardware on Pi, manual Build only):
+# 1) On the Pi — passwordless sudo for restart/status only
+#    sudo visudo -f /etc/sudoers.d/hamster-monitor
+king ALL=(ALL) NOPASSWD: /bin/systemctl restart hamster_monitor, /bin/systemctl status hamster_monitor
+
+# 2) On the Pi — non-interactive git pull (SSH deploy key or stored HTTPS creds for the clone)
+
+# 3) In Jenkins
+#    - Install plugins: Pipeline, SSH Agent
+#    - Credentials → Add → SSH Username with private key
+#      ID: pi-ssh-key  (must match Jenkinsfile default)
+#      Username: king
+#      Private key: key that can SSH to the Pi
+#    - New Item → Pipeline → Pipeline script from SCM
+#      Repo: https://github.com/BBQHK/HamsterMonitor.git
+#      Script Path: Jenkinsfile
+#      Leave Build Triggers unchecked (click Build to deploy)
+#    - Agent must have ssh and curl on PATH (Linux agent)
+
+# 4) After Build: confirm service and HTTP
+#    systemctl is-active hamster_monitor
+#    curl -fsS http://<pi-ip>:8081/status
