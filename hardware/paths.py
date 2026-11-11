@@ -9,7 +9,7 @@ from config import hardware_dir
 
 
 def resolve_bin(configured: str, name: str) -> str | None:
-    """Find a binary from config, next to start.py, or PATH."""
+    """Find a binary from config, next to main.py, or PATH."""
     candidates = []
     if configured:
         candidates.append(configured)

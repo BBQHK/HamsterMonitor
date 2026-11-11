@@ -309,7 +309,7 @@ class RtspService:
         if not binary:
             print("mediamtx not found. Download the linux_arm64 build from")
             print("https://github.com/bluenviron/mediamtx/releases")
-            print("and place the mediamtx binary next to start.py, or on PATH.")
+            print("and place the mediamtx binary next to main.py, or on PATH.")
             return False
 
         self.mediamtx_config_path = self._write_mediamtx_config()

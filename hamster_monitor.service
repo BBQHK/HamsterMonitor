@@ -6,7 +6,7 @@ After=network.target
 User=king
 WorkingDirectory=/home/king/Desktop/HamsterMonitor
 Environment=PATH=/home/king/Desktop/HamsterMonitor/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-ExecStart=/home/king/Desktop/HamsterMonitor/venv/bin/python /home/king/Desktop/HamsterMonitor/hardware/start.py
+ExecStart=/home/king/Desktop/HamsterMonitor/venv/bin/python /home/king/Desktop/HamsterMonitor/hardware/main.py
 Restart=always
 
 [Install]

@@ -9,7 +9,7 @@ from typing import List
 
 
 def hardware_dir() -> str:
-    """Directory that contains config.conf, mediamtx, and start.py."""
+    """Directory that contains config.conf, mediamtx, and main.py."""
     return os.path.dirname(os.path.abspath(__file__))
 
 

@@ -12,7 +12,7 @@ from overlay import get_current_timestamp
 from paths import rtsp_path
 
 if TYPE_CHECKING:
-    from app import HardwareApp
+    from main import HardwareApp
 
 
 def create_flask_app(hw: "HardwareApp") -> Flask:

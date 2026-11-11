@@ -50,3 +50,7 @@ class HardwareApp:
 
 def main() -> None:
     HardwareApp().run()
+
+
+if __name__ == "__main__":
+    main()
